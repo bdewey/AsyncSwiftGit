@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "static-libgit2",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/bdewey/static-libgit2",
+      "state" : {
+        "revision" : "d80745d208faf6049b7bd792e66e797192e9e8d5",
+        "version" : "0.1.0"
+      }
+    }
+  ],
+  "version" : 2
+}
