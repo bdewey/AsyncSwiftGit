@@ -15,4 +15,14 @@ final class RepositoryTests: XCTestCase {
     let url = repository.workingDirectoryURL
     XCTAssertNotNil(url)
   }
+
+  func testBasicClone() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testBasicClone")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try await Repository.clone(from: URL(string: "https://github.com/bdewey/jubliant-happiness")!, to: location)
+    XCTAssertNotNil(repository.workingDirectoryURL)
+    print("Cloned to \(repository.workingDirectoryURL?.absoluteString ?? "nil")")
+  }
 }
