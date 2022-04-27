@@ -6,6 +6,9 @@ public actor Repository {
   /// The Clibgit2 repository pointer managed by this actor.
   private let repositoryPointer: OpaquePointer
 
+  /// The working directory of the repository, or `nil` if this is a bare repository.
+  public nonisolated let workingDirectoryURL: URL?
+
   /// Creates a Git repository at a location.
   /// - Parameters:
   ///   - url: The location to create a Git repository at.
@@ -18,6 +21,11 @@ public actor Repository {
       }
     }
     self.repositoryPointer = pointer!
+    if let pathPointer = git_repository_workdir(repositoryPointer), let path = String(validatingUTF8: pathPointer) {
+      self.workingDirectoryURL = URL(fileURLWithPath: path, isDirectory: true)
+    } else {
+      self.workingDirectoryURL = nil
+    }
   }
 
   deinit {
