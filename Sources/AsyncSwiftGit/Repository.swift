@@ -3,6 +3,8 @@ import Foundation
 
 /// A Git repository.
 public actor Repository {
+  public typealias CloneProgressBlock = (Double) -> Void
+
   /// The Clibgit2 repository pointer managed by this actor.
   private let repositoryPointer: OpaquePointer
 
@@ -35,11 +37,18 @@ public actor Repository {
     git_repository_free(repositoryPointer)
   }
 
-  public static func clone(from remoteURL: URL, to localURL: URL) async throws -> Repository {
-    let repositoryPointer = try await Task {
-      try GitError.checkAndReturn(apiName: "git_clone", closure: { pointer in
+  public static func clone(
+    from remoteURL: URL,
+    to localURL: URL,
+    progress: CloneProgressBlock? = nil
+  ) async throws -> Repository {
+    let repositoryPointer = try await Task { () -> OpaquePointer in
+      var options = CloneOptions(
+        fetchOptions: FetchOptions(progressCallback: progress)
+      ).makeOptions()
+      return try GitError.checkAndReturn(apiName: "git_clone", closure: { pointer in
         localURL.withUnsafeFileSystemRepresentation { filePath in
-          git_clone(&pointer, remoteURL.absoluteString, filePath, nil)
+          git_clone(&pointer, remoteURL.absoluteString, filePath, &options)
         }
       })
     }.value
