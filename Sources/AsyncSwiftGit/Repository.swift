@@ -54,4 +54,13 @@ public actor Repository {
     }.value
     return Repository(repositoryPointer: repositoryPointer)
   }
+
+  public var tree: Tree {
+    get throws {
+      let treePointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { pointer in
+        git_revparse_single(&pointer, repositoryPointer, "HEAD^{tree}")
+      })
+      return Tree(treePointer)
+    }
+  }
 }

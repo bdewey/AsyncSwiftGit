@@ -39,4 +39,19 @@ final class RepositoryTests: XCTestCase {
     XCTAssertNotNil(repository.workingDirectoryURL)
     print("Cloned to \(repository.workingDirectoryURL?.absoluteString ?? "nil")")
   }
+
+  func testTreeEnumeration() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testTreeEnumeration")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try await Repository.clone(
+      from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
+      to: location
+    )
+    let tree = try await repository.tree
+    for entry in tree {
+      print(entry.name)
+    }
+  }
 }
