@@ -49,9 +49,9 @@ final class RepositoryTests: XCTestCase {
       from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
       to: location
     )
-    let tree = try await repository.tree
-    for entry in tree {
-      print(entry.name)
+    let tree = try await repository.headTree
+    for try await (path, entry) in await repository.entries(tree: tree) {
+      print(entry.description(treePathSegments: path))
     }
   }
 }

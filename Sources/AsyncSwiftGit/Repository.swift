@@ -55,12 +55,27 @@ public actor Repository {
     return Repository(repositoryPointer: repositoryPointer)
   }
 
-  public var tree: Tree {
+  /// Returns the `Tree` associated with the `HEAD` commit.
+  public var headTree: Tree {
     get throws {
       let treePointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { pointer in
         git_revparse_single(&pointer, repositoryPointer, "HEAD^{tree}")
       })
       return Tree(treePointer)
     }
+  }
+
+  /// Returns a `Tree` associated with a specific `Entry`.
+  public func lookupTree(for entry: Entry) throws -> Tree {
+    let treePointer = try GitError.checkAndReturn(apiName: "git_tree_lookup", closure: { pointer in
+      var oid = entry.objectID.oid
+      return git_tree_lookup(&pointer, repositoryPointer, &oid)
+    })
+    return Tree(treePointer)
+  }
+
+  /// Returns a sequence of all entries found in `Tree` and all of its children.
+  public func entries(tree: Tree) -> TreeEntrySequence {
+    TreeEntrySequence(repository: self, tree: tree)
   }
 }
