@@ -29,6 +29,10 @@ public struct GitError: Error, CustomStringConvertible {
     "Error \(errorCode) calling \(apiName): \(message)"
   }
 
+  public var localizedDescription: String {
+    return description
+  }
+
   /// Invokes a closure that invokes a Git API call and throws a `GitError` if the closure returns anything other than `GIT_OK`.
   static func check(apiName: String, closure: () -> Int32) throws {
     let result = closure()

@@ -54,4 +54,35 @@ final class RepositoryTests: XCTestCase {
       print(entry.description(treePathSegments: path))
     }
   }
+
+  func testGetDataFromEntry() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testGetDataFromEntry")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try await Repository.clone(
+      from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
+      to: location
+    )
+    let tree = try await repository.headTree
+    let entries = await repository.entries(tree: tree)
+    guard let gitIgnoreEntry = try await entries.first(where: { $0.1.name == ".gitignore" }) else {
+      throw CocoaError(.fileNoSuchFile)
+    }
+    let data = try await repository.lookupBlob(for: gitIgnoreEntry.1)
+    let string = String(data: data, encoding: .utf8)!
+    print(string)
+  }
+
+  func testAddContentToRepository() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testAddContentToRepository")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try Repository(createAt: location, bare: false)
+    let testText = "This is some sample text.\n"
+    try testText.write(to: repository.workingDirectoryURL!.appendingPathComponent("test.txt"), atomically: true, encoding: .utf8)
+    try await repository.add()
+    print(repository.workingDirectoryURL!.absoluteString)
+  }
 }

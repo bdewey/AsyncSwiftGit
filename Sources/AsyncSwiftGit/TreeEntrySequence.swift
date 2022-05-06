@@ -3,7 +3,7 @@ import Foundation
 
 /// Traverses all of the entries in a `Tree` and all of its children.
 ///
-/// The sequence entries are a tuple of `([String], Entry)`, where the first element is the "path prefix" to this particular entry, and the second element is the `Entry` itself.
+/// The sequence entries are a tuple of `([String], Entry)`, where the first element is the "path prefix" to this particular entry through the trees in the repository, and the second element is the `Entry` itself.
 public struct TreeEntrySequence: AsyncIteratorProtocol, AsyncSequence {
   private let repository: Repository
   private var stack: [NamedIterator<Tree>]

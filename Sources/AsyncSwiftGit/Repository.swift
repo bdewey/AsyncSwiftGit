@@ -78,4 +78,37 @@ public actor Repository {
   public func entries(tree: Tree) -> TreeEntrySequence {
     TreeEntrySequence(repository: self, tree: tree)
   }
+
+  public func lookupBlob(for entry: Entry) throws -> Data {
+    let blobPointer = try GitError.checkAndReturn(apiName: "git_blob_lookup", closure: { pointer in
+      var oid = entry.objectID.oid
+      return git_blob_lookup(&pointer, repositoryPointer, &oid)
+    })
+    defer {
+      git_blob_free(blobPointer)
+    }
+    let size = git_blob_rawsize(blobPointer)
+    let data = Data(bytes: git_blob_rawcontent(blobPointer), count: Int(size))
+    return data
+  }
+
+  public func add(_ pathspec: String = "*") throws {
+    let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
+      git_repository_index(&pointer, repositoryPointer)
+    })
+    defer {
+      git_index_free(indexPointer)
+    }
+    var dirPointer = UnsafeMutablePointer<Int8>(mutating: (pathspec as NSString).utf8String)
+    var paths = withUnsafeMutablePointer(to: &dirPointer) {
+      git_strarray(strings: $0, count: 1)
+    }
+
+    try GitError.check(apiName: "git_index_add_all", closure: {
+      git_index_add_all(indexPointer, &paths, 0, nil, nil)
+    })
+    try GitError.check(apiName: "git_index_write", closure: {
+      git_index_write(indexPointer)
+    })
+  }
 }
