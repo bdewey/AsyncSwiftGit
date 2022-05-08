@@ -11,8 +11,8 @@ public final class Tree {
     git_object_free(treePointer)
   }
 
-  private let treePointer: OpaquePointer
-  private let entryCount: Int
+  let treePointer: OpaquePointer
+  let entryCount: Int
 }
 
 extension Tree: BidirectionalCollection {

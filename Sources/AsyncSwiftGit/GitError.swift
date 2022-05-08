@@ -49,4 +49,13 @@ public struct GitError: Error, CustomStringConvertible {
     }
     return returnedPointer
   }
+
+  static func checkAndReturnOID(apiName: String, closure: (inout git_oid) -> Int32) throws -> ObjectID {
+    var oid = git_oid()
+    let result = closure(&oid)
+    guard result == GIT_OK.rawValue else {
+      throw GitError(errorCode: result, apiName: apiName)
+    }
+    return ObjectID(oid)
+  }
 }

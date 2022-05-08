@@ -67,8 +67,12 @@ public actor Repository {
 
   /// Returns a `Tree` associated with a specific `Entry`.
   public func lookupTree(for entry: Entry) throws -> Tree {
+    try lookupTree(for: entry.objectID)
+  }
+
+  public func lookupTree(for objectID: ObjectID) throws -> Tree {
     let treePointer = try GitError.checkAndReturn(apiName: "git_tree_lookup", closure: { pointer in
-      var oid = entry.objectID.oid
+      var oid = objectID.oid
       return git_tree_lookup(&pointer, repositoryPointer, &oid)
     })
     return Tree(treePointer)
@@ -109,6 +113,48 @@ public actor Repository {
     })
     try GitError.check(apiName: "git_index_write", closure: {
       git_index_write(indexPointer)
+    })
+  }
+
+  public func commit() throws -> ObjectID {
+    let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
+      git_repository_index(&pointer, repositoryPointer)
+    })
+    defer {
+      git_index_free(indexPointer)
+    }
+
+    var parentCommitPointer: OpaquePointer?
+    var referencePointer: OpaquePointer?
+    try GitError.check(apiName: "git_revparse_ext", closure: {
+      let result = git_revparse_ext(&parentCommitPointer, &referencePointer, repositoryPointer, "HEAD")
+      // Remap "ENOTFOUND" to "OK" because things work just fine if there is no HEAD commit; it means we're making
+      // the first commit in the repo.
+      if result == GIT_ENOTFOUND.rawValue {
+        return GIT_OK.rawValue
+      }
+      return result
+    })
+    if referencePointer != nil {
+      git_reference_free(referencePointer)
+    }
+    defer {
+      if parentCommitPointer != nil {
+        git_commit_free(parentCommitPointer)
+      }
+    }
+
+    // Take the contents of the index & write it to the object database as a tree.
+    let treeOID = try GitError.checkAndReturnOID(apiName: "git_index_write_tree", closure: { oid in
+      git_index_write_tree(&oid, indexPointer)
+    })
+    let tree = try lookupTree(for: treeOID)
+
+    // make a default signature
+    let signature = try Signature(name: "Brian Dewey", email: "bdewey@gmail.com")
+
+    return try GitError.checkAndReturnOID(apiName: "git_commit_create", closure: { commitOID in
+      git_commit_create(&commitOID, repositoryPointer, "HEAD", signature.signaturePointer, signature.signaturePointer, nil, "sample commit", tree.treePointer, parentCommitPointer != nil ? 1 : 0, &parentCommitPointer)
     })
   }
 }
