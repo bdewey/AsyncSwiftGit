@@ -40,17 +40,21 @@ public actor Repository {
   public static func clone(
     from remoteURL: URL,
     to localURL: URL,
+    credentials: Credentials = .default,
     progress: CloneProgressBlock? = nil
   ) async throws -> Repository {
     let repositoryPointer = try await Task { () -> OpaquePointer in
-      var options = CloneOptions(
-        fetchOptions: FetchOptions(progressCallback: progress)
-      ).makeOptions()
-      return try GitError.checkAndReturn(apiName: "git_clone", closure: { pointer in
-        localURL.withUnsafeFileSystemRepresentation { filePath in
-          git_clone(&pointer, remoteURL.absoluteString, filePath, &options)
-        }
-      })
+      let cloneOptions = CloneOptions(
+        fetchOptions: FetchOptions(credentials: credentials, progressCallback: progress)
+      )
+      return try cloneOptions.withOptions { options -> OpaquePointer in
+        var options = options
+        return try GitError.checkAndReturn(apiName: "git_clone", closure: { pointer in
+          localURL.withUnsafeFileSystemRepresentation { filePath in
+            git_clone(&pointer, remoteURL.absoluteString, filePath, &options)
+          }
+        })
+      }
     }.value
     return Repository(repositoryPointer: repositoryPointer)
   }

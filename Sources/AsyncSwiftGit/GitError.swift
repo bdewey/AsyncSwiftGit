@@ -2,7 +2,7 @@ import Clibgit2
 import Foundation
 
 /// Represents an error from an internal Clibgit2 API call.
-public struct GitError: Error, CustomStringConvertible {
+public struct GitError: Error, CustomStringConvertible, LocalizedError {
   /// The numeric error code from the Git API.
   public let errorCode: Int32
 
@@ -29,8 +29,8 @@ public struct GitError: Error, CustomStringConvertible {
     "Error \(errorCode) calling \(apiName): \(message)"
   }
 
-  public var localizedDescription: String {
-    return description
+  public var errorDescription: String? {
+    description
   }
 
   /// Invokes a closure that invokes a Git API call and throws a `GitError` if the closure returns anything other than `GIT_OK`.
