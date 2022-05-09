@@ -16,6 +16,17 @@ final class RepositoryTests: XCTestCase {
     XCTAssertNotNil(url)
   }
 
+  func testOpenRepository() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testOpenRepository")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    XCTAssertThrowsError(try Repository(openAt: location))
+    _ = try Repository(createAt: location, bare: false)
+    let openedRepository = try Repository(openAt: location)
+    XCTAssertEqual(openedRepository.workingDirectoryURL?.standardizedFileURL, location.standardizedFileURL)
+  }
+
   func testBasicClone() async throws {
     let location = FileManager.default.temporaryDirectory.appendingPathComponent("testBasicClone")
     defer {

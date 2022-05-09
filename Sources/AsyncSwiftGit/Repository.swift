@@ -24,6 +24,17 @@ public actor Repository {
     self.init(repositoryPointer: repositoryPointer)
   }
 
+  /// Opens a git repository at a specified location.
+  /// - Parameter url: The location of the repository to open.
+  public convenience init(openAt url: URL) throws {
+    let repositoryPointer = try GitError.checkAndReturn(apiName: "git_repository_open") { pointer in
+      url.withUnsafeFileSystemRepresentation { fileSystemPath in
+        git_repository_open(&pointer, fileSystemPath)
+      }
+    }
+    self.init(repositoryPointer: repositoryPointer)
+  }
+
   private init(repositoryPointer: OpaquePointer) {
     self.repositoryPointer = repositoryPointer
     if let pathPointer = git_repository_workdir(repositoryPointer), let path = String(validatingUTF8: pathPointer) {
