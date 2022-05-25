@@ -131,7 +131,8 @@ public actor Repository {
     })
   }
 
-  public func commit() throws -> ObjectID {
+  @discardableResult
+  public func commit(message: String) throws -> ObjectID {
     let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
       git_repository_index(&pointer, repositoryPointer)
     })
@@ -166,10 +167,41 @@ public actor Repository {
     let tree = try lookupTree(for: treeOID)
 
     // make a default signature
+    #warning("Need to get the real username / email")
     let signature = try Signature(name: "Brian Dewey", email: "bdewey@gmail.com")
 
     return try GitError.checkAndReturnOID(apiName: "git_commit_create", closure: { commitOID in
-      git_commit_create(&commitOID, repositoryPointer, "HEAD", signature.signaturePointer, signature.signaturePointer, nil, "sample commit", tree.treePointer, parentCommitPointer != nil ? 1 : 0, &parentCommitPointer)
+      git_commit_create(
+        &commitOID,
+        repositoryPointer,
+        "HEAD",
+        signature.signaturePointer,
+        signature.signaturePointer,
+        nil,
+        message,
+        tree.treePointer,
+        parentCommitPointer != nil ? 1 : 0, &parentCommitPointer
+      )
+    })
+  }
+
+  public func push(credentials: Credentials = .default) throws {
+    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+      git_remote_lookup(&pointer, repositoryPointer, "origin")
+    })
+    defer {
+      git_remote_free(remotePointer)
+    }
+    let pushOptions = PushOptions(credentials: credentials)
+    #warning("This doesn't look up the right ref")
+    var dirPointer = UnsafeMutablePointer<Int8>(mutating: ("refs/heads/main" as NSString).utf8String)
+    var paths = withUnsafeMutablePointer(to: &dirPointer) {
+      git_strarray(strings: $0, count: 1)
+    }
+    try GitError.check(apiName: "git_remote_push", closure: {
+      pushOptions.withOptions { options in
+        git_remote_push(remotePointer, &paths, &options)
+      }
     })
   }
 }

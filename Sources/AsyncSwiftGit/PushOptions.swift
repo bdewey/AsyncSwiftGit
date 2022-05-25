@@ -1,7 +1,7 @@
 import Clibgit2
 import Foundation
 
-final class FetchOptions: CustomStringConvertible {
+final class PushOptions: CustomStringConvertible {
   init(credentials: Credentials = .default, progressCallback: Repository.CloneProgressBlock? = nil) {
     self.credentials = credentials
     self.progressCallback = progressCallback
@@ -22,15 +22,15 @@ final class FetchOptions: CustomStringConvertible {
     Unmanaged<FetchOptions>.fromOpaque(UnsafeRawPointer(pointer)).takeUnretainedValue()
   }
 
-  func withOptions<T>(closure: (git_fetch_options) throws -> T) rethrows -> T {
-    var options = git_fetch_options()
-    git_fetch_options_init(&options, UInt32(GIT_FETCH_OPTIONS_VERSION))
+  func withOptions<T>(closure: (inout git_push_options) throws -> T) rethrows -> T {
+    var options = git_push_options()
+    git_push_options_init(&options, UInt32(GIT_PUSH_OPTIONS_VERSION))
     if progressCallback != nil {
       options.callbacks.transfer_progress = fetchProgress
     }
     options.callbacks.payload = toPointer()
     options.callbacks.credentials = credentialsCallback
-    return try closure(options)
+    return try closure(&options)
   }
 }
 
@@ -39,6 +39,7 @@ private func fetchProgress(progressPointer: UnsafePointer<git_indexer_progress>?
     return 0
   }
 
+  print("In FetchProgress, payload = \(payload)")
   let fetchOptions = FetchOptions.fromPointer(payload)
   if let progress = progressPointer?.pointee {
     let progressPercentage = (Double(progress.received_objects) + Double(progress.indexed_objects)) / (2 * Double(progress.total_objects))

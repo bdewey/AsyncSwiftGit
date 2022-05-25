@@ -107,11 +107,11 @@ final class RepositoryTests: XCTestCase {
     let testText = "This is some sample text.\n"
     try testText.write(to: repository.workingDirectoryURL!.appendingPathComponent("test.txt"), atomically: true, encoding: .utf8)
     try await repository.add()
-    let firstCommit = try await repository.commit()
+    let firstCommit = try await repository.commit(message: "First commit")
     print("First commit: \(firstCommit)")
     try "Hello, world\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("hello.txt"), atomically: true, encoding: .utf8)
     try await repository.add()
-    let secondCommit = try await repository.commit()
+    let secondCommit = try await repository.commit(message: "Second commit")
     print("Second commit: \(secondCommit)")
   }
 }
