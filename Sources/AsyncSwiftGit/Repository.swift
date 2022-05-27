@@ -132,7 +132,7 @@ public actor Repository {
   }
 
   @discardableResult
-  public func commit(message: String) throws -> ObjectID {
+  public func commit(message: String, signature: Signature) throws -> ObjectID {
     let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
       git_repository_index(&pointer, repositoryPointer)
     })
@@ -165,10 +165,6 @@ public actor Repository {
       git_index_write_tree(&oid, indexPointer)
     })
     let tree = try lookupTree(for: treeOID)
-
-    // make a default signature
-    #warning("Need to get the real username / email")
-    let signature = try Signature(name: "Brian Dewey", email: "bdewey@gmail.com")
 
     return try GitError.checkAndReturnOID(apiName: "git_commit_create", closure: { commitOID in
       git_commit_create(

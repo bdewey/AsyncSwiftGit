@@ -99,6 +99,7 @@ final class RepositoryTests: XCTestCase {
 
   func testSimpleCommits() async throws {
     let location = FileManager.default.temporaryDirectory.appendingPathComponent("testSimpleCommits")
+    let signature = try Signature(name: "Brian Dewey", email: "bdewey@gmail.com")
     defer {
       try? FileManager.default.removeItem(at: location)
     }
@@ -107,11 +108,11 @@ final class RepositoryTests: XCTestCase {
     let testText = "This is some sample text.\n"
     try testText.write(to: repository.workingDirectoryURL!.appendingPathComponent("test.txt"), atomically: true, encoding: .utf8)
     try await repository.add()
-    let firstCommit = try await repository.commit(message: "First commit")
+    let firstCommit = try await repository.commit(message: "First commit", signature: signature)
     print("First commit: \(firstCommit)")
     try "Hello, world\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("hello.txt"), atomically: true, encoding: .utf8)
     try await repository.add()
-    let secondCommit = try await repository.commit(message: "Second commit")
+    let secondCommit = try await repository.commit(message: "Second commit", signature: signature)
     print("Second commit: \(secondCommit)")
   }
 }
