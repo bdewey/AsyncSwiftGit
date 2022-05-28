@@ -1,6 +1,8 @@
 import Clibgit2
 import Foundation
 
+extension git_merge_analysis_t: OptionSet {}
+
 /// A Git repository.
 public actor Repository {
   public typealias CloneProgressBlock = (Double) -> Void
@@ -68,6 +70,105 @@ public actor Repository {
       }
     }.value
     return Repository(repositoryPointer: repositoryPointer)
+  }
+
+  /// Fetch from a named remote.
+  /// - Parameters:
+  ///   - remote: The remote to fetch
+  ///   - credentials: Credentials to use for the fetch.
+  public func fetch(remote: String, credentials: Credentials = .default) throws {
+    let fetchOptions = FetchOptions(credentials: credentials, progressCallback: nil)
+    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+      git_remote_lookup(&pointer, repositoryPointer, remote)
+    })
+    defer {
+      git_remote_free(remotePointer)
+    }
+    try GitError.check(apiName: "git_remote_fetch", closure: {
+      fetchOptions.withOptions { options in
+        git_remote_fetch(remotePointer, nil, &options, "fetch")
+      }
+    })
+  }
+
+  /// Merge a `ref` into the current branch.
+  public func merge(revspec: String) throws {
+    // Throw an error if we are in any non-normal state (e.g., cherry-pick)
+    try GitError.check(apiName: "git_repository_state", closure: {
+      git_repository_state(repositoryPointer)
+    })
+
+    let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
+      git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
+    })
+    defer {
+      git_annotated_commit_free(annotatedCommit)
+    }
+
+    var analysis = GIT_MERGE_ANALYSIS_NONE
+    var mergePreference = GIT_MERGE_PREFERENCE_NONE
+    var theirHeads: [OpaquePointer?] = [annotatedCommit]
+    try GitError.check(apiName: "git_merge_analysis", closure: {
+      git_merge_analysis(&analysis, &mergePreference, repositoryPointer, &theirHeads, theirHeads.count)
+    })
+    print("analysis = \(analysis) mergePreference = \(mergePreference)")
+    if analysis.contains(GIT_MERGE_ANALYSIS_FASTFORWARD), let oid = ObjectID(git_annotated_commit_id(annotatedCommit)) {
+      print("Doing a fast-forward")
+      try fastForward(to: oid, isUnborn: analysis.contains(GIT_MERGE_ANALYSIS_UNBORN))
+    }
+  }
+
+  private func fastForward(to objectID: ObjectID, isUnborn: Bool) throws {
+    let headReference = isUnborn ? try createSymbolicReference(named: "HEAD", targeting: objectID) : try head
+    let targetPointer = try GitError.checkAndReturn(apiName: "git_object_lookup", closure: { pointer in
+      var oid = objectID.oid
+      return git_object_lookup(&pointer, repositoryPointer, &oid, GIT_OBJECT_COMMIT)
+    })
+    defer {
+      git_object_free(targetPointer)
+    }
+    try GitError.check(apiName: "git_checkout_tree", closure: {
+      let checkoutOptions = CheckoutOptions(checkoutStrategy: GIT_CHECKOUT_SAFE)
+      return checkoutOptions.withOptions { options in
+        git_checkout_tree(repositoryPointer, targetPointer, &options)
+      }
+    })
+    let newTarget = try GitError.checkAndReturn(apiName: "git_reference_set_target", closure: { pointer in
+      var oid = objectID.oid
+      return git_reference_set_target(&pointer, headReference.pointer, &oid, nil)
+    })
+    git_reference_free(newTarget)
+  }
+
+  private func createSymbolicReference(named name: String, targeting objectID: ObjectID) throws -> Reference {
+    let symbolicPointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
+      git_reference_lookup(&pointer, repositoryPointer, name)
+    })
+    defer {
+      git_reference_free(symbolicPointer)
+    }
+    let target = git_reference_symbolic_target(symbolicPointer)
+    let targetReference = try GitError.checkAndReturn(apiName: "git_reference_create", closure: { pointer in
+      var oid = objectID.oid
+      return git_reference_create(&pointer, repositoryPointer, target, &oid, 0, nil)
+    })
+    return Reference(pointer: targetReference)
+  }
+
+  private var head: Reference {
+    get throws {
+      let reference = try GitError.checkAndReturn(apiName: "git_repository_head", closure: { pointer in
+        git_repository_head(&pointer, repositoryPointer)
+      })
+      return Reference(pointer: reference)
+    }
+  }
+
+  public func addRemote(_ name: String, url: URL) throws {
+    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_create", closure: { pointer in
+      git_remote_create(&pointer, repositoryPointer, name, url.absoluteString)
+    })
+    git_remote_free(remotePointer)
   }
 
   /// Returns the `Tree` associated with the `HEAD` commit.

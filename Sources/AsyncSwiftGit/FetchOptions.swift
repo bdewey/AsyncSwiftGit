@@ -22,7 +22,7 @@ final class FetchOptions: CustomStringConvertible {
     Unmanaged<FetchOptions>.fromOpaque(UnsafeRawPointer(pointer)).takeUnretainedValue()
   }
 
-  func withOptions<T>(closure: (git_fetch_options) throws -> T) rethrows -> T {
+  func withOptions<T>(closure: (inout git_fetch_options) throws -> T) rethrows -> T {
     var options = git_fetch_options()
     git_fetch_options_init(&options, UInt32(GIT_FETCH_OPTIONS_VERSION))
     if progressCallback != nil {
@@ -30,7 +30,7 @@ final class FetchOptions: CustomStringConvertible {
     }
     options.callbacks.payload = toPointer()
     options.callbacks.credentials = credentialsCallback
-    return try closure(options)
+    return try closure(&options)
   }
 }
 

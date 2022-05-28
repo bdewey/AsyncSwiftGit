@@ -37,6 +37,20 @@ final class RepositoryTests: XCTestCase {
     print("Cloned to \(repository.workingDirectoryURL?.absoluteString ?? "nil")")
   }
 
+  func testFetchFastForward() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testFetchFastForward")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try Repository(createAt: location, bare: false)
+    try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
+    try await repository.fetch(remote: "origin")
+    try await repository.merge(revspec: "origin/main")
+    let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
+    print("Looking for file at \(expectedFilePath)")
+    XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
+  }
+
   func testCloneWithProgress() async throws {
     let location = FileManager.default.temporaryDirectory.appendingPathComponent("testBasicClone")
     defer {

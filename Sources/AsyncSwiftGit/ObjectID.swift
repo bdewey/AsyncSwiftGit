@@ -7,6 +7,13 @@ public struct ObjectID: CustomStringConvertible {
     self.oid = oid
   }
 
+  init?(_ oidPointer: UnsafePointer<git_oid>?) {
+    guard let oid = oidPointer?.pointee else {
+      return nil
+    }
+    self.init(oid)
+  }
+
   let oid: git_oid
 
   public var description: String {
