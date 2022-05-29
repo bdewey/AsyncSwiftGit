@@ -92,9 +92,34 @@ public actor Repository {
     })
   }
 
-  /// Merge a `ref` into the current branch.
-  @discardableResult
-  public func merge(revspec: String, signature: Signature) throws -> ObjectID {
+  /// Possible results from a merge operation.
+  public enum MergeResult: Equatable {
+    /// We fast-forwarded the current branch to a new commit.
+    case fastForward(ObjectID)
+
+    /// We created a merge commit in the current branch.
+    case merge(ObjectID)
+
+    /// No action was taken -- the current branch already has all changes from the target branch.
+    case none
+
+    public var isFastForward: Bool {
+      switch self {
+      case .fastForward: return true
+      case .merge, .none: return false
+      }
+    }
+
+    public var isMerge: Bool {
+      switch self {
+      case .merge: return true
+      case .fastForward, .none: return false
+      }
+    }
+  }
+
+  /// Merge a `revspec` into the current branch.
+  public func merge(revspec: String, signature: Signature) throws -> MergeResult {
     // Throw an error if we are in any non-normal state (e.g., cherry-pick)
     try GitError.check(apiName: "git_repository_state", closure: {
       git_repository_state(repositoryPointer)
@@ -117,13 +142,17 @@ public actor Repository {
 
       // Fast forward
       try fastForward(to: oid, isUnborn: analysis.contains(GIT_MERGE_ANALYSIS_UNBORN))
-      return oid
+      return .fastForward(oid)
 
     } else if analysis.contains(GIT_MERGE_ANALYSIS_NORMAL) {
 
       // Normal merge
       guard !mergePreference.contains(GIT_MERGE_PREFERENCE_FASTFORWARD_ONLY) else {
-        throw GitError(errorCode: Int32(GIT_ERROR_INTERNAL.rawValue), apiName: "git_merge", customMessage: "Fast-forward is preferred, but only a merge is possible")
+        throw GitError(
+          errorCode: Int32(GIT_ERROR_INTERNAL.rawValue),
+          apiName: "git_merge",
+          customMessage: "Fast-forward is preferred, but only a merge is possible"
+        )
       }
       let mergeOptions = MergeOptions(
         checkoutOptions: CheckoutOptions(checkoutStrategy: [GIT_CHECKOUT_FORCE, GIT_CHECKOUT_ALLOW_CONFLICTS]),
@@ -136,22 +165,11 @@ public actor Repository {
         })
       })
       try checkForConflicts()
-      return try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
+      let mergeCommitOID = try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
+      return .merge(mergeCommitOID)
     }
 
-    // no changes -- just return head
-    let headReference = try self.head
-    let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
-      git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
-    })
-    defer {
-      git_object_free(headCommit)
-    }
-    if let oid = ObjectID(git_commit_id(headCommit)) {
-      return oid
-    } else {
-      throw MachError(.notSupported)
-    }
+    return .none
   }
 
   private func commitMerge(revspec: String, annotatedCommit: OpaquePointer, signature: Signature) throws -> ObjectID {

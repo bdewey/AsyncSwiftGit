@@ -45,7 +45,8 @@ final class RepositoryTests: XCTestCase {
     let repository = try Repository(createAt: location, bare: false)
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
-    try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    XCTAssertTrue(result.isFastForward)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
@@ -62,7 +63,8 @@ final class RepositoryTests: XCTestCase {
     try await repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
-    try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    XCTAssertTrue(result.isMerge)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))

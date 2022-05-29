@@ -25,3 +25,9 @@ public struct ObjectID: CustomStringConvertible {
     return String(bytesNoCopy: string, length: length, encoding: .ascii, freeWhenDone: true) ?? "<error>"
   }
 }
+
+extension ObjectID: Equatable {
+  public static func == (lhs: ObjectID, rhs: ObjectID) -> Bool {
+    return lhs.description == rhs.description
+  }
+}
