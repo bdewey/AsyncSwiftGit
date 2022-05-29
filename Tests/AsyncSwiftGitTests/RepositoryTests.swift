@@ -65,6 +65,7 @@ final class RepositoryTests: XCTestCase {
     try await repository.fetch(remote: "origin")
     let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isMerge)
+    try await repository.checkNormalState()
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))

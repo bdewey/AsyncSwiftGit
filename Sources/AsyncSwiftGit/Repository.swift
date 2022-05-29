@@ -120,11 +120,8 @@ public actor Repository {
 
   /// Merge a `revspec` into the current branch.
   public func merge(revspec: String, signature: Signature) throws -> MergeResult {
-    // Throw an error if we are in any non-normal state (e.g., cherry-pick)
-    try GitError.check(apiName: "git_repository_state", closure: {
-      git_repository_state(repositoryPointer)
-    })
-
+    try checkNormalState()
+    
     let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
       git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
     })
@@ -206,7 +203,7 @@ public actor Repository {
     }
 
     var parents: [OpaquePointer?] = [headCommit, annotatedCommitObjectPointer]
-    return try GitError.checkAndReturnOID(apiName: "git_commit_create", closure: { pointer in
+    let mergeCommitOID = try GitError.checkAndReturnOID(apiName: "git_commit_create", closure: { pointer in
       git_commit_create(
         &pointer,
         repositoryPointer,
@@ -220,9 +217,23 @@ public actor Repository {
         &parents
       )
     })
+
+    try GitError.check(apiName: "git_repository_state_cleanup", closure: {
+      git_repository_state_cleanup(repositoryPointer)
+    })
+
+    return mergeCommitOID
   }
 
-  private func checkForConflicts() throws {
+  /// Throws an error if the repository is in a non-normal state (e.g., in the middle of a cherry pick or a merge)
+  public func checkNormalState() throws {
+    try GitError.check(apiName: "git_repository_state", closure: {
+      git_repository_state(repositoryPointer)
+    })
+  }
+
+  /// Throws ``ConflictError`` if there are conflicts in the current repository.
+  public func checkForConflicts() throws {
     // See if there were conflicts
     let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
       git_repository_index(&pointer, repositoryPointer)
