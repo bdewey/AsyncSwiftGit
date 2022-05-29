@@ -3,6 +3,8 @@ import Foundation
 
 //public typealias ProgressCallback = (String, Int, Int) -> Void
 
+extension git_checkout_strategy_t: OptionSet {}
+
 /// Factory methods to create `git_checkout_options`
 struct CheckoutOptions {
   var checkoutStrategy = GIT_CHECKOUT_SAFE

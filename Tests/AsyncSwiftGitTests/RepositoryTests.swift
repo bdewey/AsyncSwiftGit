@@ -45,7 +45,24 @@ final class RepositoryTests: XCTestCase {
     let repository = try Repository(createAt: location, bare: false)
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
-    try await repository.merge(revspec: "origin/main")
+    try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
+    print("Looking for file at \(expectedFilePath)")
+    XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
+  }
+
+  func testFetchNonConflictingChanges() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testFetchNonConflictingChanges")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try Repository(createAt: location, bare: false)
+    try "Local file\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("local.txt"), atomically: true, encoding: .utf8)
+    try await repository.add("local.txt")
+    try await repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
+    try await repository.fetch(remote: "origin")
+    try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))

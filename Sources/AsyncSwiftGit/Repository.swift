@@ -2,6 +2,7 @@ import Clibgit2
 import Foundation
 
 extension git_merge_analysis_t: OptionSet {}
+extension git_merge_preference_t: OptionSet {}
 
 /// A Git repository.
 public actor Repository {
@@ -92,7 +93,8 @@ public actor Repository {
   }
 
   /// Merge a `ref` into the current branch.
-  public func merge(revspec: String) throws {
+  @discardableResult
+  public func merge(revspec: String, signature: Signature) throws -> ObjectID {
     // Throw an error if we are in any non-normal state (e.g., cherry-pick)
     try GitError.check(apiName: "git_repository_state", closure: {
       git_repository_state(repositoryPointer)
@@ -111,11 +113,133 @@ public actor Repository {
     try GitError.check(apiName: "git_merge_analysis", closure: {
       git_merge_analysis(&analysis, &mergePreference, repositoryPointer, &theirHeads, theirHeads.count)
     })
-    print("analysis = \(analysis) mergePreference = \(mergePreference)")
     if analysis.contains(GIT_MERGE_ANALYSIS_FASTFORWARD), let oid = ObjectID(git_annotated_commit_id(annotatedCommit)) {
-      print("Doing a fast-forward")
+
+      // Fast forward
       try fastForward(to: oid, isUnborn: analysis.contains(GIT_MERGE_ANALYSIS_UNBORN))
+      return oid
+
+    } else if analysis.contains(GIT_MERGE_ANALYSIS_NORMAL) {
+
+      // Normal merge
+      guard !mergePreference.contains(GIT_MERGE_PREFERENCE_FASTFORWARD_ONLY) else {
+        throw GitError(errorCode: Int32(GIT_ERROR_INTERNAL.rawValue), apiName: "git_merge", customMessage: "Fast-forward is preferred, but only a merge is possible")
+      }
+      let mergeOptions = MergeOptions(
+        checkoutOptions: CheckoutOptions(checkoutStrategy: [GIT_CHECKOUT_FORCE, GIT_CHECKOUT_ALLOW_CONFLICTS]),
+        mergeFlags: [],
+        fileFlags: GIT_MERGE_FILE_STYLE_DIFF3
+      )
+      try mergeOptions.withOptions({ merge_options, checkout_options in
+        try GitError.check(apiName: "git_merge", closure: {
+          git_merge(repositoryPointer, &theirHeads, theirHeads.count, &merge_options, &checkout_options)
+        })
+      })
+      try checkForConflicts()
+      return try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
     }
+
+    // no changes -- just return head
+    let headReference = try self.head
+    let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
+      git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
+    })
+    defer {
+      git_object_free(headCommit)
+    }
+    if let oid = ObjectID(git_commit_id(headCommit)) {
+      return oid
+    } else {
+      throw MachError(.notSupported)
+    }
+  }
+
+  private func commitMerge(revspec: String, annotatedCommit: OpaquePointer, signature: Signature) throws -> ObjectID {
+    let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
+      git_repository_index(&pointer, repositoryPointer)
+    })
+    defer {
+      git_index_free(indexPointer)
+    }
+    let headReference = try self.head
+    let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
+      git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
+    })
+    defer {
+      git_object_free(headCommit)
+    }
+    let annotatedCommitObjectPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
+      var oid = git_annotated_commit_id(annotatedCommit)!.pointee
+      return git_commit_lookup(&pointer, repositoryPointer, &oid)
+    })
+    defer {
+      git_object_free(annotatedCommitObjectPointer)
+    }
+
+    let treeOid = try GitError.checkAndReturnOID(apiName: "git_index_write_tree", closure: { pointer in
+      git_index_write_tree(&pointer, indexPointer)
+    })
+    let treePointer = try GitError.checkAndReturn(apiName: "git_tree_lookup", closure: { pointer in
+      var oid = treeOid.oid
+      return git_tree_lookup(&pointer, repositoryPointer, &oid)
+    })
+    defer {
+      git_tree_free(treePointer)
+    }
+
+    var parents: [OpaquePointer?] = [headCommit, annotatedCommitObjectPointer]
+    return try GitError.checkAndReturnOID(apiName: "git_commit_create", closure: { pointer in
+      git_commit_create(
+        &pointer,
+        repositoryPointer,
+        git_reference_name(headReference.pointer),
+        signature.signaturePointer,
+        signature.signaturePointer,
+        nil,
+        "Merge \(revspec)",
+        treePointer,
+        parents.count,
+        &parents
+      )
+    })
+  }
+
+  private func checkForConflicts() throws {
+    // See if there were conflicts
+    let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
+      git_repository_index(&pointer, repositoryPointer)
+    })
+    defer {
+      git_index_free(indexPointer)
+    }
+
+    if git_index_has_conflicts(indexPointer) == 0 {
+      // No conflicts
+      return
+    }
+
+    let iteratorPointer = try GitError.checkAndReturn(apiName: "git_index_conflict_iterator_new", closure: { pointer in
+      git_index_conflict_iterator_new(&pointer, indexPointer)
+    })
+    defer {
+      git_index_conflict_iterator_free(iteratorPointer)
+    }
+
+    var ancestor: UnsafePointer<git_index_entry>?
+    var ours: UnsafePointer<git_index_entry>?
+    var theirs: UnsafePointer<git_index_entry>?
+
+    var conflictingPaths: [String] = []
+
+    while git_index_conflict_next(&ancestor, &ours, &theirs, iteratorPointer) == 0 {
+      guard let pathChars = ours?.pointee.path ?? theirs?.pointee.path ?? ancestor?.pointee.path else {
+        continue
+      }
+      let path = String(cString: pathChars)
+      conflictingPaths.append(path)
+    }
+
+    throw ConflictError(conflictingPaths: conflictingPaths)
   }
 
   private func fastForward(to objectID: ObjectID, isUnborn: Bool) throws {
