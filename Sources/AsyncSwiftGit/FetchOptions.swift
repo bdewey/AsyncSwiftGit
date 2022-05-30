@@ -42,7 +42,7 @@ private func fetchProgress(progressPointer: UnsafePointer<git_indexer_progress>?
   let fetchOptions = FetchOptions.fromPointer(payload)
   if let progress = progressPointer?.pointee {
     let progressPercentage = (Double(progress.received_objects) + Double(progress.indexed_objects)) / (2 * Double(progress.total_objects))
-    fetchOptions.progressCallback?(progressPercentage)
+    fetchOptions.progressCallback?(.success(progressPercentage))
   }
   return 0
 }

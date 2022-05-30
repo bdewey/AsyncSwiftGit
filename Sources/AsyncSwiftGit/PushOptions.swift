@@ -1,5 +1,15 @@
 import Clibgit2
 import Foundation
+import Logging
+
+private extension Logger {
+  static let push: Logger = {
+    var logger = Logger(label: "org.brians-brain.AsyncSwiftGit.PushOptions")
+    logger[metadataKey: "subsystem"] = "push"
+    logger.logLevel = .trace
+    return logger
+  }()
+}
 
 final class PushOptions: CustomStringConvertible {
   init(credentials: Credentials = .default, progressCallback: Repository.CloneProgressBlock? = nil) {
@@ -18,15 +28,16 @@ final class PushOptions: CustomStringConvertible {
     Unmanaged.passUnretained(self).toOpaque()
   }
 
-  static func fromPointer(_ pointer: UnsafeMutableRawPointer) -> FetchOptions {
-    Unmanaged<FetchOptions>.fromOpaque(UnsafeRawPointer(pointer)).takeUnretainedValue()
+  static func fromPointer(_ pointer: UnsafeMutableRawPointer) -> PushOptions {
+    Unmanaged<PushOptions>.fromOpaque(UnsafeRawPointer(pointer)).takeUnretainedValue()
   }
 
   func withOptions<T>(closure: (inout git_push_options) throws -> T) rethrows -> T {
     var options = git_push_options()
     git_push_options_init(&options, UInt32(GIT_PUSH_OPTIONS_VERSION))
     if progressCallback != nil {
-      options.callbacks.transfer_progress = fetchProgress
+      options.callbacks.sideband_progress = sidebandProgress
+      options.callbacks.push_transfer_progress = pushProgress
     }
     options.callbacks.payload = toPointer()
     options.callbacks.credentials = credentialsCallback
@@ -34,16 +45,22 @@ final class PushOptions: CustomStringConvertible {
   }
 }
 
-private func fetchProgress(progressPointer: UnsafePointer<git_indexer_progress>?, payload: UnsafeMutableRawPointer?) -> Int32 {
+private func sidebandProgress(message: UnsafePointer<Int8>?, length: Int32, payload: UnsafeMutableRawPointer?) -> Int32 {
+  if let message = message {
+    let string = String(cString: message)
+    Logger.push.trace("sideband: \(string)")
+  }
+  return 0
+}
+
+private func pushProgress(current: UInt32, total: UInt32, bytes: Int, payload: UnsafeMutableRawPointer?) -> Int32 {
   guard let payload = payload else {
     return 0
   }
 
-  print("In FetchProgress, payload = \(payload)")
-  let fetchOptions = FetchOptions.fromPointer(payload)
-  if let progress = progressPointer?.pointee {
-    let progressPercentage = (Double(progress.received_objects) + Double(progress.indexed_objects)) / (2 * Double(progress.total_objects))
-    fetchOptions.progressCallback?(progressPercentage)
-  }
+  let pushOptions = PushOptions.fromPointer(payload)
+  let progressPercentage = total != 0 ? Double(current) / Double(total) : 0
+  Logger.push.trace("push: Computed progress \(progressPercentage) from \(current), \(total), \(bytes)")
+  pushOptions.progressCallback?(.success(progressPercentage))
   return 0
 }

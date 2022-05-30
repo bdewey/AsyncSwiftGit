@@ -44,7 +44,10 @@ final class RepositoryTests: XCTestCase {
     }
     let repository = try Repository(createAt: location, bare: false)
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
-    try await repository.fetch(remote: "origin")
+    let progressStream = try await repository.fetchProgress(remote: "origin")
+    for try await progress in progressStream {
+      print("Fetch progress: \(progress)")
+    }
     let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isFastForward)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path

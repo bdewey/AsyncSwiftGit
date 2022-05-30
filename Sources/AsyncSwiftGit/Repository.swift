@@ -1,12 +1,22 @@
 import Clibgit2
 import Foundation
+import Logging
 
 extension git_merge_analysis_t: OptionSet {}
 extension git_merge_preference_t: OptionSet {}
 
+private extension Logger {
+  static let repository: Logger = {
+    var logger = Logger(label: "org.brians-brain.AsyncSwiftGit.Repository")
+    logger.logLevel = .debug
+    logger[metadataKey: "subsystem"] = "repository"
+    return logger
+  }()
+}
+
 /// A Git repository.
 public actor Repository {
-  public typealias CloneProgressBlock = (Double) -> Void
+  public typealias CloneProgressBlock = (Result<Double, Error>) -> Void
 
   /// The Clibgit2 repository pointer managed by this actor.
   private let repositoryPointer: OpaquePointer
@@ -77,19 +87,54 @@ public actor Repository {
   /// - Parameters:
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
-  public func fetch(remote: String, credentials: Credentials = .default) throws {
+  /// - returns: An AsyncThrowingStream that emits the fetch progress. The fetch is not done until this stream finishes yielding values.
+  public func fetchProgress(remote: String, credentials: Credentials = .default) throws -> AsyncThrowingStream<Double, Error> {
     let fetchOptions = FetchOptions(credentials: credentials, progressCallback: nil)
-    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
-      git_remote_lookup(&pointer, repositoryPointer, remote)
-    })
-    defer {
-      git_remote_free(remotePointer)
-    }
-    try GitError.check(apiName: "git_remote_fetch", closure: {
-      fetchOptions.withOptions { options in
-        git_remote_fetch(remotePointer, nil, &options, "fetch")
+    let resultStream = AsyncThrowingStream<Double, Error> { continuation in
+      fetchOptions.progressCallback = { progressResult in
+        switch progressResult {
+        case .failure(let error):
+          continuation.finish(throwing: error)
+        case .success(let progress):
+          print("Fetch progress \(progress)")
+          continuation.yield(progress)
+          if progress >= 1.0 {
+            continuation.finish()
+          }
+        }
       }
-    })
+    }
+    Task {
+      let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+        git_remote_lookup(&pointer, repositoryPointer, remote)
+      })
+      defer {
+        git_remote_free(remotePointer)
+      }
+      if let remoteURL = git_remote_url(remotePointer) {
+        let remoteURLString = String(cString: remoteURL)
+        print("Fetching from \(remoteURLString)")
+      }
+      do {
+        try GitError.check(apiName: "git_remote_fetch", closure: {
+          fetchOptions.withOptions { options in
+            git_remote_fetch(remotePointer, nil, &options, "fetch")
+          }
+        })
+        fetchOptions.progressCallback?(.success(1.0))
+      } catch {
+        fetchOptions.progressCallback?(.failure(error))
+      }
+    }
+    return resultStream
+  }
+
+  /// Fetch from a named remote, waiting until the fetch is 100% complete before returning.
+  /// - Parameters:
+  ///   - remote: The remote to fetch
+  ///   - credentials: Credentials to use for the fetch.
+  public func fetch(remote: String, credentials: Credentials = .default) async throws {
+    for try await _ in try fetchProgress(remote: remote, credentials: credentials) {}
   }
 
   /// Possible results from a merge operation.
@@ -435,23 +480,49 @@ public actor Repository {
     })
   }
 
-  public func push(credentials: Credentials = .default) throws {
-    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
-      git_remote_lookup(&pointer, repositoryPointer, "origin")
-    })
-    defer {
-      git_remote_free(remotePointer)
-    }
+  public func pushProgress(credentials: Credentials = .default) throws -> AsyncThrowingStream<Double, Error> {
     let pushOptions = PushOptions(credentials: credentials)
-    #warning("This doesn't look up the right ref")
-    var dirPointer = UnsafeMutablePointer<Int8>(mutating: ("refs/heads/main" as NSString).utf8String)
-    var paths = withUnsafeMutablePointer(to: &dirPointer) {
-      git_strarray(strings: $0, count: 1)
-    }
-    try GitError.check(apiName: "git_remote_push", closure: {
-      pushOptions.withOptions { options in
-        git_remote_push(remotePointer, &paths, &options)
+    let stream = AsyncThrowingStream<Double, Error> { continuation in
+      pushOptions.progressCallback = { progressResult in
+        switch progressResult {
+        case .success(let progress):
+          continuation.yield(progress)
+          if progress >= 1 {
+            continuation.finish()
+          }
+        case .failure(let error):
+          continuation.finish(throwing: error)
+        }
       }
-    })
+    }
+    Task { [pushOptions] in
+      do {
+        let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+          git_remote_lookup(&pointer, repositoryPointer, "origin")
+        })
+        defer {
+          git_remote_free(remotePointer)
+        }
+#warning("This doesn't look up the right ref")
+        var dirPointer = UnsafeMutablePointer<Int8>(mutating: ("refs/heads/main" as NSString).utf8String)
+        var paths = withUnsafeMutablePointer(to: &dirPointer) {
+          git_strarray(strings: $0, count: 1)
+        }
+        try GitError.check(apiName: "git_remote_push", closure: {
+          pushOptions.withOptions { options in
+            git_remote_push(remotePointer, &paths, &options)
+          }
+        })
+        pushOptions.progressCallback?(.success(1.0))
+        Logger.repository.info("Done pushing")
+      } catch {
+        pushOptions.progressCallback?(.failure(error))
+      }
+    }
+    return stream
+  }
+
+  public func push(credentials: Credentials = .default) async throws {
+    for try await _ in try pushProgress(credentials: credentials) {}
   }
 }
