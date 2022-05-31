@@ -214,6 +214,30 @@ public actor Repository {
     return .none
   }
 
+  public func commitsAheadBehind(other revspec: String) throws -> (ahead: Int, behind: Int) {
+    let headReference = try self.head
+    let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
+      git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
+    })
+    defer {
+      git_commit_free(headCommit)
+    }
+    var headOID = ObjectID(git_commit_id(headCommit))
+    let otherObject = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { pointer in
+      git_revparse_single(&pointer, repositoryPointer, revspec)
+    })
+    defer {
+      git_object_free(otherObject)
+    }
+    var otherOID = ObjectID(git_commit_id(otherObject))
+    var ahead = 0
+    var behind = 0
+    try GitError.check(apiName: "git_graph_ahead_behind", closure: {
+      git_graph_ahead_behind(&ahead, &behind, repositoryPointer, &headOID!.oid, &otherOID!.oid)
+    })
+    return (ahead: ahead, behind: behind)
+  }
+
   private func commitMerge(revspec: String, annotatedCommit: OpaquePointer, signature: Signature) throws -> ObjectID {
     let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
       git_repository_index(&pointer, repositoryPointer)

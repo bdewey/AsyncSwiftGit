@@ -14,7 +14,7 @@ public struct ObjectID: CustomStringConvertible {
     self.init(oid)
   }
 
-  let oid: git_oid
+  var oid: git_oid
 
   public var description: String {
     let length = Int(GIT_OID_RAWSZ) * 2

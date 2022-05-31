@@ -50,6 +50,9 @@ final class RepositoryTests: XCTestCase {
     }
     let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isFastForward)
+    let (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    XCTAssertEqual(ahead, 0)
+    XCTAssertEqual(behind, 0)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
@@ -66,12 +69,24 @@ final class RepositoryTests: XCTestCase {
     try await repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
+    var (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    XCTAssertEqual(ahead, 1)
+    XCTAssertEqual(behind, 1)
     let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isMerge)
     try await repository.checkNormalState()
+    (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    XCTAssertEqual(ahead, 2)
+    XCTAssertEqual(behind, 0)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
+    try "Another file\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("another.txt"), atomically: true, encoding: .utf8)
+    try await repository.add("*")
+    try await repository.commit(message: "Moving ahead of remote", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    XCTAssertEqual(ahead, 3)
+    XCTAssertEqual(behind, 0)
   }
 
   func testCloneWithProgress() async throws {
