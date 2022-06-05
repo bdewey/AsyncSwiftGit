@@ -164,7 +164,7 @@ public actor Repository {
   }
 
   /// Merge a `revspec` into the current branch.
-  public func merge(revspec: String, signature: Signature) throws -> MergeResult {
+  public func merge(revspec: String, signature signatureBlock: @autoclosure () throws -> Signature) throws -> MergeResult {
     try checkNormalState()
     
     let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
@@ -207,6 +207,7 @@ public actor Repository {
         })
       })
       try checkForConflicts()
+      let signature = try signatureBlock()
       let mergeCommitOID = try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
       return .merge(mergeCommitOID)
     }
