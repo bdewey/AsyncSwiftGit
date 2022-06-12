@@ -1,14 +1,36 @@
 import Clibgit2
 import Foundation
 
+/// A structure to report on fetching progress.
+public struct FetchProgress {
+  public let receivedObjects: Int
+  public let indexedObjects: Int
+  public let totalObjects: Int
+  public let receivedBytes: Int
+
+  public init(receivedObjects: Int, indexedObject: Int, totalObjects: Int, receivedBytes: Int) {
+    self.receivedObjects = receivedObjects
+    self.indexedObjects = indexedObject
+    self.totalObjects = totalObjects
+    self.receivedBytes = receivedBytes
+  }
+
+  init(_ indexerProgress: git_indexer_progress) {
+    self.receivedObjects = Int(indexerProgress.received_objects)
+    self.indexedObjects = Int(indexerProgress.indexed_objects)
+    self.totalObjects = Int(indexerProgress.total_objects)
+    self.receivedBytes = Int(indexerProgress.received_bytes)
+  }
+}
+
 final class FetchOptions: CustomStringConvertible {
-  init(credentials: Credentials = .default, progressCallback: Repository.CloneProgressBlock? = nil) {
+  init(credentials: Credentials = .default, progressCallback: Repository.FetchProgressBlock? = nil) {
     self.credentials = credentials
     self.progressCallback = progressCallback
   }
 
   var credentials: Credentials
-  var progressCallback: Repository.CloneProgressBlock?
+  var progressCallback: Repository.FetchProgressBlock?
 
   var description: String {
     "FetchOptions Credentials = \(credentials), progressCallback \(progressCallback != nil ? "is not nil" : "is nil")"
@@ -41,8 +63,7 @@ private func fetchProgress(progressPointer: UnsafePointer<git_indexer_progress>?
 
   let fetchOptions = FetchOptions.fromPointer(payload)
   if let progress = progressPointer?.pointee {
-    let progressPercentage = (Double(progress.received_objects) + Double(progress.indexed_objects)) / (2 * Double(progress.total_objects))
-    fetchOptions.progressCallback?(.success(progressPercentage))
+    fetchOptions.progressCallback?(FetchProgress(progress))
   }
   return 0
 }

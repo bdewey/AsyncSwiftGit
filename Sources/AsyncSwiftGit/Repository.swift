@@ -14,9 +14,20 @@ private extension Logger {
   }()
 }
 
+/// A value that represents progress towards a goal.
+public enum Progress<ProgressType, ResultType> {
+
+  /// Progress towards the goal, storing the progress value.
+  case progress(ProgressType)
+
+  /// The goal is completed, storing the resulting goal value.
+  case completed(ResultType)
+}
+
 /// A Git repository.
 public actor Repository {
-  public typealias CloneProgressBlock = (Result<Double, Error>) -> Void
+  typealias FetchProgressBlock = (FetchProgress) -> Void
+  typealias CloneProgressBlock = (Result<Double, Error>) -> Void
 
   /// The Clibgit2 repository pointer managed by this actor.
   private let repositoryPointer: OpaquePointer
@@ -31,7 +42,16 @@ public actor Repository {
   public convenience init(createAt url: URL, bare: Bool = false) throws {
     let repositoryPointer = try GitError.checkAndReturn(apiName: "git_repository_init") { pointer in
       url.withUnsafeFileSystemRepresentation { fileSystemPath in
-        git_repository_init(&pointer, fileSystemPath, bare ? 1 : 0)
+        "main".withCString { branchNamePointer in
+          var options = git_repository_init_options()
+          git_repository_init_options_init(&options, UInt32(GIT_REPOSITORY_INIT_OPTIONS_VERSION))
+          options.initial_head = branchNamePointer
+          if bare {
+            options.flags = GIT_REPOSITORY_INIT_BARE.rawValue
+          }
+          options.flags |= GIT_REPOSITORY_INIT_MKDIR.rawValue
+          return git_repository_init_ext(&pointer, fileSystemPath, &options)
+        }
       }
     }
     self.init(repositoryPointer: repositoryPointer)
@@ -64,23 +84,79 @@ public actor Repository {
   public static func clone(
     from remoteURL: URL,
     to localURL: URL,
-    credentials: Credentials = .default,
-    progress: CloneProgressBlock? = nil
+    credentials: Credentials = .default
   ) async throws -> Repository {
-    let repositoryPointer = try await Task { () -> OpaquePointer in
-      let cloneOptions = CloneOptions(
-        fetchOptions: FetchOptions(credentials: credentials, progressCallback: progress)
-      )
-      return try cloneOptions.withOptions { options -> OpaquePointer in
-        var options = options
-        return try GitError.checkAndReturn(apiName: "git_clone", closure: { pointer in
-          localURL.withUnsafeFileSystemRepresentation { filePath in
-            git_clone(&pointer, remoteURL.absoluteString, filePath, &options)
-          }
-        })
+    var repository: Repository?
+    for try await progress in cloneProgress(from: remoteURL, to: localURL, credentials: credentials) {
+      switch progress {
+      case .completed(let repo):
+        repository = repo
+      case .progress:
+        break
       }
-    }.value
-    return Repository(repositoryPointer: repositoryPointer)
+    }
+    return repository!
+  }
+
+  /// Clones a repository, reporting progress.
+  /// - returns: An `AsyncThrowingStream` that returns intermediate ``FetchProgress`` while fetching and the final ``Repository`` upon completion.
+  public static func cloneProgress(
+    from remoteURL: URL,
+    to localURL: URL,
+    credentials: Credentials = .default
+  ) -> AsyncThrowingStream<Progress<FetchProgress, Repository>, Error> {
+    return AsyncThrowingStream<Progress<FetchProgress, Repository>, Error> { continuation in
+      let progressCallback: FetchProgressBlock = { progress in
+        continuation.yield(.progress(progress))
+      }
+      let cloneOptions = CloneOptions(
+        fetchOptions: FetchOptions(credentials: credentials, progressCallback: progressCallback)
+      )
+      do {
+        let repositoryPointer = try cloneOptions.withOptions { options -> OpaquePointer in
+          var options = options
+          return try GitError.checkAndReturn(apiName: "git_clone", closure: { pointer in
+            localURL.withUnsafeFileSystemRepresentation { filePath in
+              git_clone(&pointer, remoteURL.absoluteString, filePath, &options)
+            }
+          })
+        }
+        continuation.yield(.completed(Repository(repositoryPointer: repositoryPointer)))
+        continuation.finish()
+      } catch {
+        continuation.finish(throwing: error)
+      }
+    }
+  }
+
+  /// Returns the URL associated with a particular git remote name.
+  public func remoteURL(for remoteName: String) throws -> URL? {
+    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+      git_remote_lookup(&pointer, repositoryPointer, remoteName)
+    })
+    defer {
+      git_remote_free(remotePointer)
+    }
+    if let remoteString = git_remote_url(remotePointer) {
+      return URL(string: String(cString: remoteString))
+    } else {
+      return nil
+    }
+  }
+
+  /// Adds a named remote to the repo.
+  public func addRemote(_ name: String, url: URL) throws {
+    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_create", closure: { pointer in
+      git_remote_create(&pointer, repositoryPointer, name, url.absoluteString)
+    })
+    git_remote_free(remotePointer)
+  }
+
+  /// Deletes the named remote from the reposityr.
+  public func deleteRemote(_ name: String) throws {
+    try GitError.check(apiName: "git_remote_delete", closure: {
+      git_remote_delete(repositoryPointer, name)
+    })
   }
 
   /// Fetch from a named remote.
@@ -88,42 +164,31 @@ public actor Repository {
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
   /// - returns: An AsyncThrowingStream that emits the fetch progress. The fetch is not done until this stream finishes yielding values.
-  public func fetchProgress(remote: String, credentials: Credentials = .default) throws -> AsyncThrowingStream<Double, Error> {
+  public func fetchProgress(remote: String, credentials: Credentials = .default) -> AsyncThrowingStream<FetchProgress, Error> {
     let fetchOptions = FetchOptions(credentials: credentials, progressCallback: nil)
-    let resultStream = AsyncThrowingStream<Double, Error> { continuation in
+    let resultStream = AsyncThrowingStream<FetchProgress, Error> { continuation in
       fetchOptions.progressCallback = { progressResult in
-        switch progressResult {
-        case .failure(let error):
-          continuation.finish(throwing: error)
-        case .success(let progress):
-          print("Fetch progress \(progress)")
-          continuation.yield(progress)
-          if progress >= 1.0 {
-            continuation.finish()
-          }
-        }
-      }
-    }
-    Task {
-      let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
-        git_remote_lookup(&pointer, repositoryPointer, remote)
-      })
-      defer {
-        git_remote_free(remotePointer)
-      }
-      if let remoteURL = git_remote_url(remotePointer) {
-        let remoteURLString = String(cString: remoteURL)
-        print("Fetching from \(remoteURLString)")
+        continuation.yield(progressResult)
       }
       do {
+        let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+          git_remote_lookup(&pointer, repositoryPointer, remote)
+        })
+        defer {
+          git_remote_free(remotePointer)
+        }
+        if let remoteURL = git_remote_url(remotePointer) {
+          let remoteURLString = String(cString: remoteURL)
+          print("Fetching from \(remoteURLString)")
+        }
         try GitError.check(apiName: "git_remote_fetch", closure: {
           fetchOptions.withOptions { options in
             git_remote_fetch(remotePointer, nil, &options, "fetch")
           }
         })
-        fetchOptions.progressCallback?(.success(1.0))
+        continuation.finish()
       } catch {
-        fetchOptions.progressCallback?(.failure(error))
+        continuation.finish(throwing: error)
       }
     }
     return resultStream
@@ -134,7 +199,7 @@ public actor Repository {
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
   public func fetch(remote: String, credentials: Credentials = .default) async throws {
-    for try await _ in try fetchProgress(remote: remote, credentials: credentials) {}
+    for try await _ in fetchProgress(remote: remote, credentials: credentials) {}
   }
 
   /// Possible results from a merge operation.
@@ -288,9 +353,7 @@ public actor Repository {
       )
     })
 
-    try GitError.check(apiName: "git_repository_state_cleanup", closure: {
-      git_repository_state_cleanup(repositoryPointer)
-    })
+    try cleanup()
 
     return mergeCommitOID
   }
@@ -299,6 +362,45 @@ public actor Repository {
   public func checkNormalState() throws {
     try GitError.check(apiName: "git_repository_state", closure: {
       git_repository_state(repositoryPointer)
+    })
+  }
+
+  /// The current repository state.
+  public var repositoryState: git_repository_state_t {
+    let code = git_repository_state(repositoryPointer)
+    return git_repository_state_t(UInt32(code))
+  }
+
+  /// Cleans up the repository if it's in a non-normal state.
+  public func cleanup() throws {
+    try GitError.check(apiName: "git_repository_state_cleanup", closure: {
+      git_repository_state_cleanup(repositoryPointer)
+    })
+  }
+
+  public enum ResetType {
+    case soft
+    case hard
+
+    var reset_type: git_reset_t {
+      switch self {
+      case .soft:
+        return GIT_RESET_SOFT
+      case .hard:
+        return GIT_RESET_HARD
+      }
+    }
+  }
+
+  public func reset(revspec: String, type: ResetType) throws {
+    let commitPointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { pointer in
+      git_revparse_single(&pointer, repositoryPointer, revspec)
+    })
+    defer {
+      git_object_free(commitPointer)
+    }
+    try GitError.check(apiName: "git_reset", closure: {
+      git_reset(repositoryPointer, commitPointer, type.reset_type, nil)
     })
   }
 
@@ -385,13 +487,6 @@ public actor Repository {
       })
       return Reference(pointer: reference)
     }
-  }
-
-  public func addRemote(_ name: String, url: URL) throws {
-    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_create", closure: { pointer in
-      git_remote_create(&pointer, repositoryPointer, name, url.absoluteString)
-    })
-    git_remote_free(remotePointer)
   }
 
   /// Returns the `Tree` associated with the `HEAD` commit.
@@ -505,22 +600,12 @@ public actor Repository {
     })
   }
 
-  public func pushProgress(credentials: Credentials = .default) throws -> AsyncThrowingStream<Double, Error> {
+  public func pushProgress(credentials: Credentials = .default) throws -> AsyncThrowingStream<PushProgress, Error> {
     let pushOptions = PushOptions(credentials: credentials)
-    let stream = AsyncThrowingStream<Double, Error> { continuation in
-      pushOptions.progressCallback = { progressResult in
-        switch progressResult {
-        case .success(let progress):
-          continuation.yield(progress)
-          if progress >= 1 {
-            continuation.finish()
-          }
-        case .failure(let error):
-          continuation.finish(throwing: error)
-        }
+    let stream = AsyncThrowingStream<PushProgress, Error> { continuation in
+      pushOptions.progressCallback = { progress in
+        continuation.yield(progress)
       }
-    }
-    Task { [pushOptions] in
       do {
         let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
           git_remote_lookup(&pointer, repositoryPointer, "origin")
@@ -528,8 +613,10 @@ public actor Repository {
         defer {
           git_remote_free(remotePointer)
         }
-#warning("This doesn't look up the right ref")
-        var dirPointer = UnsafeMutablePointer<Int8>(mutating: ("refs/heads/main" as NSString).utf8String)
+        guard let headName = try self.head.name else {
+          throw GitError(errorCode: -312, apiName: "git_remote_push", customMessage: "Could not determine the name of the current branch")
+        }
+        var dirPointer = UnsafeMutablePointer<Int8>(mutating: (headName as NSString).utf8String)
         var paths = withUnsafeMutablePointer(to: &dirPointer) {
           git_strarray(strings: $0, count: 1)
         }
@@ -538,10 +625,10 @@ public actor Repository {
             git_remote_push(remotePointer, &paths, &options)
           }
         })
-        pushOptions.progressCallback?(.success(1.0))
+        continuation.finish()
         Logger.repository.info("Done pushing")
       } catch {
-        pushOptions.progressCallback?(.failure(error))
+        continuation.finish(throwing: error)
       }
     }
     return stream

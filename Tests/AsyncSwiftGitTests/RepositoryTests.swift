@@ -44,7 +44,7 @@ final class RepositoryTests: XCTestCase {
     }
     let repository = try Repository(createAt: location, bare: false)
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
-    let progressStream = try await repository.fetchProgress(remote: "origin")
+    let progressStream = await repository.fetchProgress(remote: "origin")
     for try await progress in progressStream {
       print("Fetch progress: \(progress)")
     }
@@ -94,11 +94,15 @@ final class RepositoryTests: XCTestCase {
     defer {
       try? FileManager.default.removeItem(at: location)
     }
-    let repository = try await Repository.clone(
-      from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
-      to: location,
-      progress: { print("Clone progress: \($0)") }
-    )
+    var repository: Repository!
+    for try await progress in Repository.cloneProgress(from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!, to: location) {
+      switch progress {
+      case .progress(let progress):
+        print("Clone progress: \(progress)")
+      case .completed(let repo):
+        repository = repo
+      }
+    }
     XCTAssertNotNil(repository.workingDirectoryURL)
     print("Cloned to \(repository.workingDirectoryURL?.absoluteString ?? "nil")")
   }
