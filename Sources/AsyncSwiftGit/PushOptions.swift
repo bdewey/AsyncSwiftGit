@@ -71,8 +71,6 @@ private func pushProgress(current: UInt32, total: UInt32, bytes: Int, payload: U
   }
 
   let pushOptions = PushOptions.fromPointer(payload)
-  let progressPercentage = total != 0 ? Double(current) / Double(total) : 0
-  Logger.push.trace("push: Computed progress \(progressPercentage) from \(current), \(total), \(bytes)")
   pushOptions.progressCallback?(.push(current: Int(current), total: Int(total), bytes: Int(bytes)))
   return 0
 }
