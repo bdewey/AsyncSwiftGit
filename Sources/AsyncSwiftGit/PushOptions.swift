@@ -11,14 +11,22 @@ private extension Logger {
   }()
 }
 
+public enum PushProgress {
+  case sideband(String)
+  case push(current: Int, total: Int, bytes: Int)
+}
+
 final class PushOptions: CustomStringConvertible {
-  init(credentials: Credentials = .default, progressCallback: Repository.CloneProgressBlock? = nil) {
+
+  typealias ProgressBlock = (PushProgress) -> Void
+
+  init(credentials: Credentials = .default, progressCallback: ProgressBlock? = nil) {
     self.credentials = credentials
     self.progressCallback = progressCallback
   }
 
   var credentials: Credentials
-  var progressCallback: Repository.CloneProgressBlock?
+  var progressCallback: ProgressBlock?
 
   var description: String {
     "FetchOptions Credentials = \(credentials), progressCallback \(progressCallback != nil ? "is not nil" : "is nil")"
@@ -46,9 +54,13 @@ final class PushOptions: CustomStringConvertible {
 }
 
 private func sidebandProgress(message: UnsafePointer<Int8>?, length: Int32, payload: UnsafeMutableRawPointer?) -> Int32 {
+  guard let payload else {
+    return 0
+  }
+  let pushOptions = PushOptions.fromPointer(payload)
   if let message = message {
     let string = String(cString: message)
-    Logger.push.trace("sideband: \(string)")
+    pushOptions.progressCallback?(.sideband(string))
   }
   return 0
 }
@@ -59,8 +71,6 @@ private func pushProgress(current: UInt32, total: UInt32, bytes: Int, payload: U
   }
 
   let pushOptions = PushOptions.fromPointer(payload)
-  let progressPercentage = total != 0 ? Double(current) / Double(total) : 0
-  Logger.push.trace("push: Computed progress \(progressPercentage) from \(current), \(total), \(bytes)")
-  pushOptions.progressCallback?(.success(progressPercentage))
+  pushOptions.progressCallback?(.push(current: Int(current), total: Int(total), bytes: Int(bytes)))
   return 0
 }

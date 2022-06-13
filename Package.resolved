@@ -5,8 +5,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/bdewey/static-libgit2",
       "state" : {
-        "revision" : "d80745d208faf6049b7bd792e66e797192e9e8d5",
-        "version" : "0.1.0"
+        "revision" : "1f437b1d8a08b6bd914264576034bb55198f6f67",
+        "version" : "0.3.0"
+      }
+    },
+    {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "5d66f7ba25daf4f94100e7022febf3c75e37a6c7",
+        "version" : "1.4.2"
       }
     }
   ],

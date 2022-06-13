@@ -11,4 +11,12 @@ final class Reference {
   }
 
   let pointer: OpaquePointer
+
+  var name: String? {
+    if let charPointer = git_reference_name(pointer) {
+      return String(cString: charPointer)
+    } else {
+      return nil
+    }
+  }
 }
