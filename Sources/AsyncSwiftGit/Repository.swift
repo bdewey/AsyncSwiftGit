@@ -279,28 +279,55 @@ public actor Repository {
     return .none
   }
 
-  public func commitsAheadBehind(other revspec: String) throws -> (ahead: Int, behind: Int) {
-    let headReference = try head
-    let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
-      git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
-    })
-    defer {
-      git_commit_free(headCommit)
+  /// Gets the `ObjectID` associated with `revspec`.
+  /// - returns: `nil` if `revspec` doesn't exist
+  /// - throws on other git errors.
+  private func commitObjectID(revspec: String) throws -> ObjectID? {
+    do {
+      let commitPointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { pointer in
+        git_revparse_single(&pointer, repositoryPointer, revspec)
+      })
+      defer {
+        git_object_free(commitPointer)
+      }
+      // Assume our object is a commit
+      return ObjectID(git_commit_id(commitPointer))
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return nil
+      } else {
+        throw error
+      }
     }
-    var headOID = ObjectID(git_commit_id(headCommit))
-    let otherObject = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { pointer in
-      git_revparse_single(&pointer, repositoryPointer, revspec)
-    })
-    defer {
-      git_object_free(otherObject)
+  }
+
+  private func countCommits(revspec: String) async throws -> Int {
+    var count = 0
+    for try await _ in log(revspec: revspec) {
+      count += 1
     }
-    var otherOID = ObjectID(git_commit_id(otherObject))
-    var ahead = 0
-    var behind = 0
-    try GitError.check(apiName: "git_graph_ahead_behind", closure: {
-      git_graph_ahead_behind(&ahead, &behind, repositoryPointer, &headOID!.oid, &otherOID!.oid)
-    })
-    return (ahead: ahead, behind: behind)
+    return count
+  }
+
+  public func commitsAheadBehind(other revspec: String) async throws -> (ahead: Int, behind: Int) {
+    let headObjectID = try commitObjectID(revspec: "HEAD")
+    let otherObjectID = try commitObjectID(revspec: revspec)
+
+    switch (headObjectID, otherObjectID) {
+    case (.none, .none):
+      return (ahead: 0, behind: 0)
+    case (.some, .none):
+      return (ahead: try await countCommits(revspec: "HEAD"), behind: 0)
+    case (.none, .some):
+      return (ahead: 0, behind: try await countCommits(revspec: revspec))
+    case (.some(var headOID), .some(var otherOID)):
+      var ahead = 0
+      var behind = 0
+      try GitError.check(apiName: "git_graph_ahead_behind", closure: {
+        git_graph_ahead_behind(&ahead, &behind, repositoryPointer, &headOID.oid, &otherOID.oid)
+      })
+      return (ahead: ahead, behind: behind)
+    }
   }
 
   private func commitMerge(revspec: String, annotatedCommit: OpaquePointer, signature: Signature) throws -> ObjectID {
@@ -600,7 +627,7 @@ public actor Repository {
   }
 
   public func pushProgress(credentials: Credentials = .default) throws -> AsyncThrowingStream<PushProgress, Error> {
-    guard let head = try? self.head else {
+    guard let head = try? head else {
       // Assume that if we can't get HEAD, it's because the repo is empty. Ergo, nothing to push.
       return AsyncThrowingStream { continuation in
         continuation.finish()

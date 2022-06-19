@@ -182,4 +182,43 @@ final class RepositoryTests: XCTestCase {
     let secondCommit = try await repository.commit(message: "Second commit", signature: signature)
     print("Second commit: \(secondCommit)")
   }
+
+  func testCommitsAheadBehind() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testCommitsAheadBehind")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let clientURL = location.appendingPathComponent("client")
+    try? FileManager.default.createDirectory(at: clientURL, withIntermediateDirectories: true)
+    let serverURL = location.appendingPathComponent("server")
+    try? FileManager.default.createDirectory(at: serverURL, withIntermediateDirectories: true)
+    let clientRepository = try Repository(createAt: clientURL)
+    let serverRepository = try Repository(createAt: serverURL)
+    try await clientRepository.addRemote("origin", url: serverURL)
+    try await clientRepository.fetch(remote: "origin")
+    let initialTuple = try await clientRepository.commitsAheadBehind(other: "origin/main")
+    XCTAssertEqual(initialTuple.ahead, 0)
+    XCTAssertEqual(initialTuple.behind, 0)
+
+    // Commit some stuff to `server` and fetch it
+    try "test1\n".write(to: serverURL.appendingPathComponent("test1.txt"), atomically: true, encoding: .utf8)
+    try await serverRepository.add()
+    try await serverRepository.commit(message: "test1", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+
+    try "test2\n".write(to: serverURL.appendingPathComponent("test2.txt"), atomically: true, encoding: .utf8)
+    try await serverRepository.add()
+    try await serverRepository.commit(message: "test2", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+
+    try await clientRepository.fetch(remote: "origin")
+    let fetchedTuple = try await clientRepository.commitsAheadBehind(other: "origin/main")
+    XCTAssertEqual(fetchedTuple.ahead, 0)
+    XCTAssertEqual(fetchedTuple.behind, 2)
+
+    let mergeResult = try await clientRepository.merge(revspec: "origin/main", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+    XCTAssertTrue(mergeResult.isFastForward)
+
+    let nothingOnServer = try await clientRepository.commitsAheadBehind(other: "fake")
+    XCTAssertEqual(nothingOnServer.ahead, 2)
+    XCTAssertEqual(nothingOnServer.behind, 0)
+  }
 }
