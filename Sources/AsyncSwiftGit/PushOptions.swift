@@ -54,7 +54,7 @@ final class PushOptions: CustomStringConvertible {
 }
 
 private func sidebandProgress(message: UnsafePointer<Int8>?, length: Int32, payload: UnsafeMutableRawPointer?) -> Int32 {
-  guard let payload else {
+  guard let payload = payload else {
     return 0
   }
   let pushOptions = PushOptions.fromPointer(payload)
