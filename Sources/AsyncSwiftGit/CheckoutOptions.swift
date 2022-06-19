@@ -1,7 +1,9 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 
-//public typealias ProgressCallback = (String, Int, Int) -> Void
+// public typealias ProgressCallback = (String, Int, Int) -> Void
 
 extension git_checkout_strategy_t: OptionSet {}
 

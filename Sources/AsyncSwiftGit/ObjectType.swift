@@ -1,10 +1,12 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 
 /// Mirrors `git_object_t` to be a little more swift-y
 public enum ObjectType: Int32 {
   /// Object can be any of the following
-  case `any` = -2
+  case any = -2
 
   /// Object is invalid
   case invalid = -1

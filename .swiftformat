@@ -1,0 +1,13 @@
+--binarygrouping none
+--decimalgrouping none
+--exclude Pods
+--header "Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file"
+--hexgrouping none
+--indent 2
+--octalgrouping none
+--patternlet inline
+--stripunusedargs closure-only
+--wraparguments beforefirst
+--wrapcollections beforefirst
+--self init-only
+--swiftversion 5.6

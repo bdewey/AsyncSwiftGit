@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 
@@ -22,7 +24,7 @@ public struct Entry {
 
 extension Entry: CustomStringConvertible {
   public var description: String {
-    return description(treePathSegments: [])
+    description(treePathSegments: [])
   }
 
   /// Prints a formatted description of this entry.

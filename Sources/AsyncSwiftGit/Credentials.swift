@@ -1,10 +1,4 @@
-//
-//  Credentials.swift
-//  SwiftGit2
-//
-//  Created by Tom Booth on 29/02/2016.
-//  Copyright © 2016 GitHub, Inc. All rights reserved.
-//
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
 
 import Clibgit2
 
@@ -33,7 +27,6 @@ internal func credentialsCallback(
   allowedOptions: UInt32,
   payload: UnsafeMutableRawPointer?
 ) -> Int32 {
-
   let result: Int32
 
   // Find username_from_url

@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 
@@ -15,7 +17,7 @@ struct MergeOptions {
     options.flags = mergeFlags.rawValue
     options.file_flags = fileFlags.rawValue
     return try checkoutOptions.withOptions { checkout_options in
-      return try block(&options, &checkout_options)
+      try block(&options, &checkout_options)
     }
   }
 }

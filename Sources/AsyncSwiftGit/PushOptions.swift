@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 import Logging
@@ -17,7 +19,6 @@ public enum PushProgress {
 }
 
 final class PushOptions: CustomStringConvertible {
-
   typealias ProgressBlock = (PushProgress) -> Void
 
   init(credentials: Credentials = .default, progressCallback: ProgressBlock? = nil) {

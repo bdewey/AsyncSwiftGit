@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Foundation
 
 /// Thrown when two branches conflict.

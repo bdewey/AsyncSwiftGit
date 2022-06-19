@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 import Logging
@@ -16,7 +18,6 @@ private extension Logger {
 
 /// A value that represents progress towards a goal.
 public enum Progress<ProgressType, ResultType> {
-
   /// Progress towards the goal, storing the progress value.
   case progress(ProgressType)
 
@@ -105,7 +106,7 @@ public actor Repository {
     to localURL: URL,
     credentials: Credentials = .default
   ) -> AsyncThrowingStream<Progress<FetchProgress, Repository>, Error> {
-    return AsyncThrowingStream<Progress<FetchProgress, Repository>, Error> { continuation in
+    AsyncThrowingStream<Progress<FetchProgress, Repository>, Error> { continuation in
       let progressCallback: FetchProgressBlock = { progress in
         continuation.yield(.progress(progress))
       }
@@ -231,7 +232,7 @@ public actor Repository {
   /// Merge a `revspec` into the current branch.
   public func merge(revspec: String, signature signatureBlock: @autoclosure () throws -> Signature) throws -> MergeResult {
     try checkNormalState()
-    
+
     let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
       git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
     })
@@ -246,13 +247,11 @@ public actor Repository {
       git_merge_analysis(&analysis, &mergePreference, repositoryPointer, &theirHeads, theirHeads.count)
     })
     if analysis.contains(GIT_MERGE_ANALYSIS_FASTFORWARD), let oid = ObjectID(git_annotated_commit_id(annotatedCommit)) {
-
       // Fast forward
       try fastForward(to: oid, isUnborn: analysis.contains(GIT_MERGE_ANALYSIS_UNBORN))
       return .fastForward(oid)
 
     } else if analysis.contains(GIT_MERGE_ANALYSIS_NORMAL) {
-
       // Normal merge
       guard !mergePreference.contains(GIT_MERGE_PREFERENCE_FASTFORWARD_ONLY) else {
         throw GitError(
@@ -266,11 +265,11 @@ public actor Repository {
         mergeFlags: [],
         fileFlags: GIT_MERGE_FILE_STYLE_DIFF3
       )
-      try mergeOptions.withOptions({ merge_options, checkout_options in
+      try mergeOptions.withOptions { merge_options, checkout_options in
         try GitError.check(apiName: "git_merge", closure: {
           git_merge(repositoryPointer, &theirHeads, theirHeads.count, &merge_options, &checkout_options)
         })
-      })
+      }
       try checkForConflicts()
       let signature = try signatureBlock()
       let mergeCommitOID = try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
@@ -281,7 +280,7 @@ public actor Repository {
   }
 
   public func commitsAheadBehind(other revspec: String) throws -> (ahead: Int, behind: Int) {
-    let headReference = try self.head
+    let headReference = try head
     let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
       git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
     })
@@ -311,7 +310,7 @@ public actor Repository {
     defer {
       git_index_free(indexPointer)
     }
-    let headReference = try self.head
+    let headReference = try head
     let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
       git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
     })

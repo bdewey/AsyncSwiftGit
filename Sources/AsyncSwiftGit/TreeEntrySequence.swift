@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 
@@ -24,7 +26,7 @@ public struct TreeEntrySequence: AsyncIteratorProtocol, AsyncSequence {
         result = stack[stack.count - 1].next()
       }
     }
-    let pathPrefix = stack.map { $0.name }.compactMap { $0 }
+    let pathPrefix = stack.map(\.name).compactMap { $0 }
     if let result = result, result.type == .tree {
       let tree = try await repository.lookupTree(for: result)
       stack.append(.init(name: result.name, collection: tree))

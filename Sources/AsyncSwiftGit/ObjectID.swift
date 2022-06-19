@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+
 import Clibgit2
 import Foundation
 
@@ -19,7 +21,7 @@ public struct ObjectID: CustomStringConvertible {
   public var description: String {
     let length = Int(GIT_OID_RAWSZ) * 2
     let string = UnsafeMutablePointer<Int8>.allocate(capacity: length)
-    var oid = self.oid
+    var oid = oid
     git_oid_fmt(string, &oid)
 
     return String(bytesNoCopy: string, length: length, encoding: .ascii, freeWhenDone: true) ?? "<error>"
@@ -28,6 +30,6 @@ public struct ObjectID: CustomStringConvertible {
 
 extension ObjectID: Equatable {
   public static func == (lhs: ObjectID, rhs: ObjectID) -> Bool {
-    return lhs.description == rhs.description
+    lhs.description == rhs.description
   }
 }
