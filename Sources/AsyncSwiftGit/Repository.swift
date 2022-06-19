@@ -479,7 +479,7 @@ public actor Repository {
     return Reference(pointer: targetReference)
   }
 
-  private var head: Reference {
+  public var head: Reference {
     get throws {
       let reference = try GitError.checkAndReturn(apiName: "git_repository_head", closure: { pointer in
         git_repository_head(&pointer, repositoryPointer)

@@ -68,7 +68,10 @@ final class RepositoryTests: XCTestCase {
     let repository = try Repository(createAt: location, bare: false)
     try "Local file\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("local.txt"), atomically: true, encoding: .utf8)
     try await repository.add("local.txt")
-    try await repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let commitTime = Date()
+    try await repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com", time: commitTime))
+    let timeFromRepo = try await repository.head.commit.commitTime
+    XCTAssertEqual(commitTime.timeIntervalSince1970, timeFromRepo.timeIntervalSince1970, accuracy: 1)
     try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
     var (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")

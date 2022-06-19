@@ -1,7 +1,7 @@
 --binarygrouping none
 --decimalgrouping none
 --exclude Pods
---header "Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file"
+--header "Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE for details."
 --hexgrouping none
 --indent 2
 --octalgrouping none

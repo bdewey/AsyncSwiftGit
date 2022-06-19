@@ -3,7 +3,7 @@
 import Clibgit2
 import Foundation
 
-final class Reference {
+public final class Reference {
   init(pointer: OpaquePointer) {
     self.pointer = pointer
   }
@@ -14,11 +14,20 @@ final class Reference {
 
   let pointer: OpaquePointer
 
-  var name: String? {
+  public var name: String? {
     if let charPointer = git_reference_name(pointer) {
       return String(cString: charPointer)
     } else {
       return nil
+    }
+  }
+
+  public var commit: Commit {
+    get throws {
+      let commitPointer = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { commitPointer in
+        git_reference_peel(&commitPointer, pointer, GIT_OBJECT_COMMIT)
+      })
+      return Commit(commitPointer)
     }
   }
 }
