@@ -19,4 +19,23 @@ public final class Commit {
     let git_time = git_commit_time(commit)
     return Date(timeIntervalSince1970: TimeInterval(git_time))
   }
+
+  public var objectID: ObjectID {
+    let oid = git_commit_id(commit)
+    return ObjectID(oid)!
+  }
+
+  public var summary: String {
+    if let result = git_commit_summary(commit) {
+      return String(cString: result)
+    } else {
+      return ""
+    }
+  }
+}
+
+extension Commit: CustomStringConvertible {
+  public var description: String {
+    "\(objectID) \(ISO8601DateFormatter().string(from: commitTime)) \(summary)"
+  }
 }

@@ -110,6 +110,12 @@ final class RepositoryTests: XCTestCase {
     }
     XCTAssertNotNil(repository.workingDirectoryURL)
     print("Cloned to \(repository.workingDirectoryURL?.absoluteString ?? "nil")")
+    var commitCount = 0
+    for try await commit in await repository.log(revspec: "HEAD") {
+      print("\(commit)")
+      commitCount += 1
+    }
+    XCTAssertEqual(commitCount, 9)
   }
 
   func testTreeEnumeration() async throws {
