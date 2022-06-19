@@ -1,4 +1,4 @@
-// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE file
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE for details.
 
 import Foundation
 
