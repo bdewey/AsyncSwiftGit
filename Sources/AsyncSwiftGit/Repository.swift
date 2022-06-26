@@ -132,16 +132,24 @@ public actor Repository {
 
   /// Returns the URL associated with a particular git remote name.
   public func remoteURL(for remoteName: String) throws -> URL? {
-    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
-      git_remote_lookup(&pointer, repositoryPointer, remoteName)
-    })
-    defer {
-      git_remote_free(remotePointer)
-    }
-    if let remoteString = git_remote_url(remotePointer) {
-      return URL(string: String(cString: remoteString))
-    } else {
-      return nil
+    do {
+      let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+        git_remote_lookup(&pointer, repositoryPointer, remoteName)
+      })
+      defer {
+        git_remote_free(remotePointer)
+      }
+      if let remoteString = git_remote_url(remotePointer) {
+        return URL(string: String(cString: remoteString))
+      } else {
+        return nil
+      }
+    } catch let gitError as GitError {
+      if gitError.errorCode == GIT_ENOTFOUND.rawValue {
+        return nil
+      } else {
+        throw gitError
+      }
     }
   }
 
@@ -512,6 +520,13 @@ public actor Repository {
         git_repository_head(&pointer, repositoryPointer)
       })
       return Reference(pointer: reference)
+    }
+  }
+
+  /// The ``ObjectID`` for the current value of HEAD.
+  public var headObjectID: ObjectID? {
+    get throws {
+      try commitObjectID(revspec: "HEAD")
     }
   }
 
