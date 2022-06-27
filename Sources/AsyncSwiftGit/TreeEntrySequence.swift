@@ -15,7 +15,7 @@ public struct TreeEntrySequence: AsyncIteratorProtocol, AsyncSequence {
     self.stack = [.init(collection: tree)]
   }
 
-  public mutating func next() async throws -> ([String], Entry)? {
+  public mutating func next() throws -> ([String], Entry)? {
     guard !Task.isCancelled, !stack.isEmpty else {
       return nil
     }
@@ -28,7 +28,7 @@ public struct TreeEntrySequence: AsyncIteratorProtocol, AsyncSequence {
     }
     let pathPrefix = stack.map(\.name).compactMap { $0 }
     if let result = result, result.type == .tree {
-      let tree = try await repository.lookupTree(for: result)
+      let tree = try repository.lookupTree(for: result)
       stack.append(.init(name: result.name, collection: tree))
     }
     if let result = result {

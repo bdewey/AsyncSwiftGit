@@ -26,7 +26,7 @@ public enum Progress<ProgressType, ResultType> {
 }
 
 /// A Git repository.
-public actor Repository {
+public final class Repository {
   typealias FetchProgressBlock = (FetchProgress) -> Void
   typealias CloneProgressBlock = (Result<Double, Error>) -> Void
 
@@ -309,15 +309,15 @@ public actor Repository {
     }
   }
 
-  private func countCommits(revspec: String) async throws -> Int {
+  private func countCommits(revspec: String) throws -> Int {
     var count = 0
-    for try await _ in log(revspec: revspec) {
+    try enumerateCommits(revspec: revspec) { _ in
       count += 1
     }
     return count
   }
 
-  public func commitsAheadBehind(other revspec: String) async throws -> (ahead: Int, behind: Int) {
+  public func commitsAheadBehind(other revspec: String) throws -> (ahead: Int, behind: Int) {
     let headObjectID = try commitObjectID(revspec: "HEAD")
     let otherObjectID = try commitObjectID(revspec: revspec)
 
@@ -325,9 +325,9 @@ public actor Repository {
     case (.none, .none):
       return (ahead: 0, behind: 0)
     case (.some, .none):
-      return (ahead: try await countCommits(revspec: "HEAD"), behind: 0)
+      return (ahead: try countCommits(revspec: "HEAD"), behind: 0)
     case (.none, .some):
-      return (ahead: 0, behind: try await countCommits(revspec: revspec))
+      return (ahead: 0, behind: try countCommits(revspec: revspec))
     case (.some(var headOID), .some(var otherOID)):
       var ahead = 0
       var behind = 0
@@ -685,44 +685,48 @@ public actor Repository {
     for try await _ in try pushProgress(credentials: credentials) {}
   }
 
+  public func enumerateCommits(revspec: String, callback: (Commit) -> Void) throws {
+    // TODO: Per the documentation, we should reuse this walker.
+    let revwalkPointer = try GitError.checkAndReturn(apiName: "git_revwalk_new", closure: { pointer in
+      git_revwalk_new(&pointer, repositoryPointer)
+    })
+    defer {
+      git_revwalk_free(revwalkPointer)
+    }
+    let commitPointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { commitPointer in
+      git_revparse_single(&commitPointer, repositoryPointer, revspec)
+    })
+    defer {
+      git_commit_free(commitPointer)
+    }
+    try GitError.check(apiName: "git_revwalk_push", closure: {
+      let oid = git_commit_id(commitPointer)
+      return git_revwalk_push(revwalkPointer, oid)
+    })
+    var oid = git_oid()
+    var walkResult = git_revwalk_next(&oid, revwalkPointer)
+    while walkResult == 0 {
+      let historyCommitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { historyCommitPointer in
+        git_commit_lookup(&historyCommitPointer, repositoryPointer, &oid)
+      })
+      callback(Commit(historyCommitPointer))
+      walkResult = git_revwalk_next(&oid, revwalkPointer)
+    }
+    if walkResult != GIT_ITEROVER.rawValue {
+      throw GitError(errorCode: walkResult, apiName: "git_revwalk_next")
+    }
+  }
+
   /// Get the history of changes to the repository.
   /// - Parameter revspec: The starting commit for history.
   /// - Returns: An `AsyncThrowingStream` whose elements are ``Commit`` records starting at `revspec`.
   public func log(revspec: String) -> AsyncThrowingStream<Commit, Error> {
     AsyncThrowingStream { continuation in
       do {
-        // TODO: Per the documentation, we should reuse this walker.
-        let revwalkPointer = try GitError.checkAndReturn(apiName: "git_revwalk_new", closure: { pointer in
-          git_revwalk_new(&pointer, repositoryPointer)
-        })
-        defer {
-          git_revwalk_free(revwalkPointer)
+        try enumerateCommits(revspec: revspec) { commit in
+          continuation.yield(commit)
         }
-        let commitPointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { commitPointer in
-          git_revparse_single(&commitPointer, repositoryPointer, revspec)
-        })
-        defer {
-          git_commit_free(commitPointer)
-        }
-        try GitError.check(apiName: "git_revwalk_push", closure: {
-          let oid = git_commit_id(commitPointer)
-          return git_revwalk_push(revwalkPointer, oid)
-        })
-        var oid = git_oid()
-        var walkResult = git_revwalk_next(&oid, revwalkPointer)
-        while walkResult == 0 {
-          let historyCommitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { historyCommitPointer in
-            git_commit_lookup(&historyCommitPointer, repositoryPointer, &oid)
-          })
-          continuation.yield(Commit(historyCommitPointer))
-          walkResult = git_revwalk_next(&oid, revwalkPointer)
-        }
-        if walkResult == GIT_ITEROVER.rawValue {
-          continuation.finish()
-        } else {
-          let error = GitError(errorCode: walkResult, apiName: "git_revwalk_next")
-          continuation.finish(throwing: error)
-        }
+        continuation.finish()
       } catch {
         continuation.finish(throwing: error)
       }

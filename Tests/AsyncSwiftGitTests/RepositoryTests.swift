@@ -45,14 +45,14 @@ final class RepositoryTests: XCTestCase {
       try? FileManager.default.removeItem(at: location)
     }
     let repository = try Repository(createAt: location, bare: false)
-    try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
-    let progressStream = await repository.fetchProgress(remote: "origin")
+    try repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
+    let progressStream = repository.fetchProgress(remote: "origin")
     for try await progress in progressStream {
       print("Fetch progress: \(progress)")
     }
-    let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let result = try repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isFastForward)
-    let (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    let (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(ahead, 0)
     XCTAssertEqual(behind, 0)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
@@ -67,29 +67,29 @@ final class RepositoryTests: XCTestCase {
     }
     let repository = try Repository(createAt: location, bare: false)
     try "Local file\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("local.txt"), atomically: true, encoding: .utf8)
-    try await repository.add("local.txt")
+    try repository.add("local.txt")
     let commitTime = Date()
-    try await repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com", time: commitTime))
-    let timeFromRepo = try await repository.head.commit.commitTime
+    try repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com", time: commitTime))
+    let timeFromRepo = try repository.head.commit.commitTime
     XCTAssertEqual(commitTime.timeIntervalSince1970, timeFromRepo.timeIntervalSince1970, accuracy: 1)
-    try await repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
+    try repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
-    var (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    var (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(ahead, 1)
     XCTAssertEqual(behind, 1)
-    let result = try await repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let result = try repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isMerge)
-    try await repository.checkNormalState()
-    (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    try repository.checkNormalState()
+    (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(ahead, 2)
     XCTAssertEqual(behind, 0)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
     try "Another file\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("another.txt"), atomically: true, encoding: .utf8)
-    try await repository.add("*")
-    try await repository.commit(message: "Moving ahead of remote", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
-    (ahead, behind) = try await repository.commitsAheadBehind(other: "origin/main")
+    try repository.add("*")
+    try repository.commit(message: "Moving ahead of remote", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(ahead, 3)
     XCTAssertEqual(behind, 0)
   }
@@ -111,7 +111,7 @@ final class RepositoryTests: XCTestCase {
     XCTAssertNotNil(repository.workingDirectoryURL)
     print("Cloned to \(repository.workingDirectoryURL?.absoluteString ?? "nil")")
     var commitCount = 0
-    for try await commit in await repository.log(revspec: "HEAD") {
+    for try await commit in repository.log(revspec: "HEAD") {
       print("\(commit)")
       commitCount += 1
     }
@@ -127,8 +127,8 @@ final class RepositoryTests: XCTestCase {
       from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
       to: location
     )
-    let tree = try await repository.headTree
-    for try await (path, entry) in await repository.entries(tree: tree) {
+    let tree = try repository.headTree
+    for try await (path, entry) in repository.entries(tree: tree) {
       print(entry.description(treePathSegments: path))
     }
   }
@@ -142,12 +142,12 @@ final class RepositoryTests: XCTestCase {
       from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
       to: location
     )
-    let tree = try await repository.headTree
-    let entries = await repository.entries(tree: tree)
+    let tree = try repository.headTree
+    let entries = repository.entries(tree: tree)
     guard let gitIgnoreEntry = try await entries.first(where: { $0.1.name == ".gitignore" }) else {
       throw CocoaError(.fileNoSuchFile)
     }
-    let data = try await repository.lookupBlob(for: gitIgnoreEntry.1)
+    let data = try repository.lookupBlob(for: gitIgnoreEntry.1)
     let string = String(data: data, encoding: .utf8)!
     print(string)
   }
@@ -160,7 +160,7 @@ final class RepositoryTests: XCTestCase {
     let repository = try Repository(createAt: location, bare: false)
     let testText = "This is some sample text.\n"
     try testText.write(to: repository.workingDirectoryURL!.appendingPathComponent("test.txt"), atomically: true, encoding: .utf8)
-    try await repository.add()
+    try repository.add()
     print(repository.workingDirectoryURL!.absoluteString)
   }
 
@@ -174,12 +174,12 @@ final class RepositoryTests: XCTestCase {
     print("Working directory: \(repository.workingDirectoryURL!.standardizedFileURL.path)")
     let testText = "This is some sample text.\n"
     try testText.write(to: repository.workingDirectoryURL!.appendingPathComponent("test.txt"), atomically: true, encoding: .utf8)
-    try await repository.add()
-    let firstCommit = try await repository.commit(message: "First commit", signature: signature)
+    try repository.add()
+    let firstCommit = try repository.commit(message: "First commit", signature: signature)
     print("First commit: \(firstCommit)")
     try "Hello, world\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("hello.txt"), atomically: true, encoding: .utf8)
-    try await repository.add()
-    let secondCommit = try await repository.commit(message: "Second commit", signature: signature)
+    try repository.add()
+    let secondCommit = try repository.commit(message: "Second commit", signature: signature)
     print("Second commit: \(secondCommit)")
   }
 
@@ -194,30 +194,30 @@ final class RepositoryTests: XCTestCase {
     try? FileManager.default.createDirectory(at: serverURL, withIntermediateDirectories: true)
     let clientRepository = try Repository(createAt: clientURL)
     let serverRepository = try Repository(createAt: serverURL)
-    try await clientRepository.addRemote("origin", url: serverURL)
+    try clientRepository.addRemote("origin", url: serverURL)
     try await clientRepository.fetch(remote: "origin")
-    let initialTuple = try await clientRepository.commitsAheadBehind(other: "origin/main")
+    let initialTuple = try clientRepository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(initialTuple.ahead, 0)
     XCTAssertEqual(initialTuple.behind, 0)
 
     // Commit some stuff to `server` and fetch it
     try "test1\n".write(to: serverURL.appendingPathComponent("test1.txt"), atomically: true, encoding: .utf8)
-    try await serverRepository.add()
-    try await serverRepository.commit(message: "test1", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+    try serverRepository.add()
+    try serverRepository.commit(message: "test1", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
 
     try "test2\n".write(to: serverURL.appendingPathComponent("test2.txt"), atomically: true, encoding: .utf8)
-    try await serverRepository.add()
-    try await serverRepository.commit(message: "test2", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+    try serverRepository.add()
+    try serverRepository.commit(message: "test2", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
 
     try await clientRepository.fetch(remote: "origin")
-    let fetchedTuple = try await clientRepository.commitsAheadBehind(other: "origin/main")
+    let fetchedTuple = try clientRepository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(fetchedTuple.ahead, 0)
     XCTAssertEqual(fetchedTuple.behind, 2)
 
-    let mergeResult = try await clientRepository.merge(revspec: "origin/main", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+    let mergeResult = try clientRepository.merge(revspec: "origin/main", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
     XCTAssertTrue(mergeResult.isFastForward)
 
-    let nothingOnServer = try await clientRepository.commitsAheadBehind(other: "fake")
+    let nothingOnServer = try clientRepository.commitsAheadBehind(other: "fake")
     XCTAssertEqual(nothingOnServer.ahead, 2)
     XCTAssertEqual(nothingOnServer.behind, 0)
   }

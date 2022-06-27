@@ -26,12 +26,18 @@ let package = Package(
         "static-libgit2",
         "Initializer",
         .product(name: "Logging", package: "swift-log"),
+      ],
+      swiftSettings: [
+        .unsafeFlags(["-warnings-as-errors"]),
       ]
     ),
     .target(name: "Initializer", dependencies: ["static-libgit2"]),
     .testTarget(
       name: "AsyncSwiftGitTests",
-      dependencies: ["AsyncSwiftGit"]
+      dependencies: ["AsyncSwiftGit"],
+      swiftSettings: [
+        .unsafeFlags(["-warnings-as-errors"]),
+      ]
     ),
   ]
 )
