@@ -10,7 +10,7 @@ import Foundation
 /// If the type is valid, you can get ``Credentials`` for connection and a ``Signature`` for authoring commits.
 public struct GitConnectionSettings: Codable, Equatable {
   public enum AuthenticationType: String, Codable {
-    case usernamePassword
+    case usernamePassword = "https" // There are serialized versions of settings that called this "https"
     case ssh
     case none
   }
