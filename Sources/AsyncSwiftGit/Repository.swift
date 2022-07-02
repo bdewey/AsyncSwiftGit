@@ -211,6 +211,47 @@ public final class Repository {
     for try await _ in fetchProgress(remote: remote, credentials: credentials) {}
   }
 
+  public func checkoutProgress(
+    revspec: String,
+    checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE
+  ) -> AsyncThrowingStream<CheckoutProgress, Error> {
+    AsyncThrowingStream { continuation in
+      do {
+        try checkNormalState()
+        let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
+          git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
+        })
+        defer {
+          git_annotated_commit_free(annotatedCommit)
+        }
+        let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
+          git_commit_lookup(&pointer, repositoryPointer, git_annotated_commit_id(annotatedCommit))
+        })
+        defer {
+          git_commit_free(commitPointer)
+        }
+        let checkoutOptions = CheckoutOptions(checkoutStrategy: checkoutStrategy) { progress in
+          continuation.yield(progress)
+        }
+        try checkoutOptions.withOptions { options in
+          try GitError.check(apiName: "git_checkout_tree", closure: {
+            git_checkout_tree(repositoryPointer, commitPointer, &options)
+          })
+        }
+        continuation.finish()
+      } catch {
+        continuation.finish(throwing: error)
+      }
+    }
+  }
+
+  public func checkout(
+    revspec: String,
+    checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE
+  ) async throws {
+    for try await _ in checkoutProgress(revspec: revspec, checkoutStrategy: checkoutStrategy) {}
+  }
+
   /// Possible results from a merge operation.
   public enum MergeResult: Equatable {
     /// We fast-forwarded the current branch to a new commit.

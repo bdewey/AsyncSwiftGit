@@ -60,6 +60,22 @@ final class RepositoryTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
   }
 
+  func testCheckoutRemote() async throws {
+    let location = FileManager.default.temporaryDirectory.appendingPathComponent("testFetchFastForward")
+    defer {
+      try? FileManager.default.removeItem(at: location)
+    }
+    let repository = try Repository(createAt: location, bare: false)
+    try repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
+    try await repository.fetch(remote: "origin")
+    for try await progress in repository.checkoutProgress(revspec: "origin/main") {
+      print(progress)
+    }
+    let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
+    print("Looking for file at \(expectedFilePath)")
+    XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))
+  }
+
   func testFetchNonConflictingChanges() async throws {
     let location = FileManager.default.temporaryDirectory.appendingPathComponent("testFetchNonConflictingChanges")
     defer {
