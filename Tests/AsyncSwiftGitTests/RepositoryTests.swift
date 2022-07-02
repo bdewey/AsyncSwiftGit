@@ -71,6 +71,10 @@ final class RepositoryTests: XCTestCase {
     for try await progress in repository.checkoutProgress(revspec: "origin/main") {
       print(progress)
     }
+    try repository.checkNormalState()
+    let statusEntries = try repository.statusEntries
+    print(statusEntries)
+    XCTAssertTrue(statusEntries.isEmpty)
     let expectedFilePath = repository.workingDirectoryURL!.appendingPathComponent("Package.swift").path
     print("Looking for file at \(expectedFilePath)")
     XCTAssertTrue(FileManager.default.fileExists(atPath: expectedFilePath))

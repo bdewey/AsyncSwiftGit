@@ -238,6 +238,31 @@ public final class Repository {
             git_checkout_tree(repositoryPointer, commitPointer, &options)
           })
         }
+        if let annotatedCommitRefname = git_annotated_commit_ref(annotatedCommit) {
+          let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
+            git_reference_lookup(&pointer, repositoryPointer, annotatedCommitRefname)
+          })
+          defer {
+            git_reference_free(referencePointer)
+          }
+          var targetRefname = annotatedCommitRefname
+          if (git_reference_is_remote(referencePointer) != 0) {
+            let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create_from_annotated", closure: { pointer in
+              git_branch_create_from_annotated(&pointer, repositoryPointer, annotatedCommitRefname, annotatedCommit, 0)
+            })
+            defer {
+              git_reference_free(branchPointer)
+            }
+            targetRefname = git_reference_name(branchPointer)
+          }
+          try GitError.check(apiName: "git_repository_set_head", closure: {
+            git_repository_set_head(repositoryPointer, targetRefname)
+          })
+        } else {
+          try GitError.check(apiName: "git_repository_set_head_detached_from_annotated", closure: {
+            git_repository_set_head_detached_from_annotated(repositoryPointer, annotatedCommit)
+          })
+        }
         continuation.finish()
       } catch {
         continuation.finish(throwing: error)
@@ -250,6 +275,28 @@ public final class Repository {
     checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE
   ) async throws {
     for try await _ in checkoutProgress(revspec: revspec, checkoutStrategy: checkoutStrategy) {}
+  }
+
+  public var statusEntries: [StatusEntry] {
+    get throws {
+      var options = git_status_options()
+      git_status_options_init(&options, UInt32(GIT_STATUS_OPTIONS_VERSION))
+      let statusList = try GitError.checkAndReturn(apiName: "git_status_list_new", closure: { pointer in
+        git_status_list_new(&pointer, repositoryPointer, &options)
+      })
+      defer {
+        git_status_list_free(statusList)
+      }
+      let entryCount = git_status_list_entrycount(statusList)
+      let entries = (0 ..< entryCount).compactMap { index -> StatusEntry? in
+        let statusPointer = git_status_byindex(statusList, index)
+        guard let status = statusPointer?.pointee else {
+          return nil
+        }
+        return StatusEntry(status)
+      }
+      return entries
+    }
   }
 
   /// Possible results from a merge operation.
