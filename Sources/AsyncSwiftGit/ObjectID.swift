@@ -4,7 +4,7 @@ import Clibgit2
 import Foundation
 
 /// Make a `git_oid` more Swifty
-public struct ObjectID: CustomStringConvertible {
+public struct ObjectID: CustomStringConvertible, Hashable {
   init(_ oid: git_oid) {
     self.oid = oid
   }
@@ -25,6 +25,30 @@ public struct ObjectID: CustomStringConvertible {
     git_oid_fmt(string, &oid)
 
     return String(bytesNoCopy: string, length: length, encoding: .ascii, freeWhenDone: true) ?? "<error>"
+  }
+
+  public func hash(into hasher: inout Hasher) {
+    // so tedious...
+    hasher.combine(oid.id.0)
+    hasher.combine(oid.id.1)
+    hasher.combine(oid.id.2)
+    hasher.combine(oid.id.3)
+    hasher.combine(oid.id.4)
+    hasher.combine(oid.id.5)
+    hasher.combine(oid.id.6)
+    hasher.combine(oid.id.7)
+    hasher.combine(oid.id.8)
+    hasher.combine(oid.id.9)
+    hasher.combine(oid.id.10)
+    hasher.combine(oid.id.11)
+    hasher.combine(oid.id.12)
+    hasher.combine(oid.id.13)
+    hasher.combine(oid.id.14)
+    hasher.combine(oid.id.15)
+    hasher.combine(oid.id.16)
+    hasher.combine(oid.id.17)
+    hasher.combine(oid.id.18)
+    hasher.combine(oid.id.19)
   }
 }
 

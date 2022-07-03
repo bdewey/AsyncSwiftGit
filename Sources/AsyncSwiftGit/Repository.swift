@@ -629,7 +629,7 @@ public final class Repository {
   }
 
   /// Returns a `Tree` associated with a specific `Entry`.
-  public func lookupTree(for entry: Entry) throws -> Tree {
+  public func lookupTree(for entry: TreeEntry) throws -> Tree {
     try lookupTree(for: entry.objectID)
   }
 
@@ -641,12 +641,46 @@ public final class Repository {
     return Tree(treePointer)
   }
 
-  /// Returns a sequence of all entries found in `Tree` and all of its children.
-  public func entries(tree: Tree) -> TreeEntrySequence {
-    TreeEntrySequence(repository: self, tree: tree)
+  public enum TreeWalkResult: Int32 {
+    case skipSubtree = 1
+    case `continue` = 0
+    case done = -1
   }
 
-  public func lookupBlob(for entry: Entry) throws -> Data {
+  public typealias TreeWalkCallback = (TreeEntry) -> TreeWalkResult
+
+  public func treeWalk(
+    tree: Tree,
+    traversalMode: git_treewalk_mode = GIT_TREEWALK_PRE,
+    callback: @escaping TreeWalkCallback
+  ) throws {
+    var callback = callback
+    try withUnsafeMutablePointer(to: &callback) { callbackPointer in
+      try GitError.check(apiName: "git_tree_walk", closure: {
+        git_tree_walk(tree.treePointer, traversalMode, treeWalkCallback, callbackPointer)
+      })
+    }
+  }
+
+  public func treeWalk(
+    tree: Tree? = nil,
+    traversalMode: git_treewalk_mode = GIT_TREEWALK_PRE
+  ) -> AsyncThrowingStream<TreeEntry, Error> {
+    AsyncThrowingStream { continuation in
+      do {
+        let originTree = try (tree ?? (try headTree))
+        try treeWalk(tree: originTree, traversalMode: traversalMode, callback: { qualifiedEntry in
+          continuation.yield(qualifiedEntry)
+          return .continue
+        })
+        continuation.finish()
+      } catch {
+        continuation.finish(throwing: error)
+      }
+    }
+  }
+
+  public func lookupBlob(for entry: TreeEntry) throws -> Data {
     let blobPointer = try GitError.checkAndReturn(apiName: "git_blob_lookup", closure: { pointer in
       var oid = entry.objectID.oid
       return git_blob_lookup(&pointer, repositoryPointer, &oid)
@@ -820,4 +854,13 @@ public final class Repository {
       }
     }
   }
+}
+
+private func treeWalkCallback(root: UnsafePointer<Int8>?, entryPointer: OpaquePointer?, payload: UnsafeMutableRawPointer?) -> Int32 {
+  guard let payload = payload, let entryPointer = entryPointer, let root = root else {
+    return Repository.TreeWalkResult.continue.rawValue
+  }
+  let callbackPointer = payload.assumingMemoryBound(to: Repository.TreeWalkCallback.self)
+  let entry = TreeEntry(entryPointer, root: String(cString: root))
+  return callbackPointer.pointee(entry).rawValue
 }

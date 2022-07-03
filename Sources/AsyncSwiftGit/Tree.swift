@@ -15,6 +15,20 @@ public final class Tree {
 
   let treePointer: OpaquePointer
   let entryCount: Int
+
+  public subscript(path path: String) -> TreeEntry? {
+    do {
+      let entryPointer = try GitError.checkAndReturn(apiName: "git_tree_entry_bypath", closure: { pointer in
+        git_tree_entry_bypath(&pointer, treePointer, path)
+      })
+      defer {
+        git_tree_entry_free(entryPointer)
+      }
+      return TreeEntry(entryPointer)
+    } catch {
+      return nil
+    }
+  }
 }
 
 extension Tree: BidirectionalCollection {
@@ -24,7 +38,7 @@ extension Tree: BidirectionalCollection {
   public func index(before i: Int) -> Int { i - 1 }
   public var count: Int { entryCount }
 
-  public subscript(position: Int) -> Entry {
-    Entry(git_tree_entry_byindex(treePointer, position))
+  public subscript(position: Int) -> TreeEntry {
+    TreeEntry(git_tree_entry_byindex(treePointer, position))
   }
 }

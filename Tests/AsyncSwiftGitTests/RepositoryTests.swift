@@ -148,8 +148,8 @@ final class RepositoryTests: XCTestCase {
       to: location
     )
     let tree = try repository.headTree
-    for try await (path, entry) in repository.entries(tree: tree) {
-      print(entry.description(treePathSegments: path))
+    for try await qualfiedEntry in repository.treeWalk(tree: tree) {
+      print(qualfiedEntry)
     }
   }
 
@@ -162,12 +162,11 @@ final class RepositoryTests: XCTestCase {
       from: URL(string: "https://github.com/bdewey/SpacedRepetitionScheduler")!,
       to: location
     )
-    let tree = try repository.headTree
-    let entries = repository.entries(tree: tree)
-    guard let gitIgnoreEntry = try await entries.first(where: { $0.1.name == ".gitignore" }) else {
+    let entries = repository.treeWalk()
+    guard let gitIgnoreEntry = try await entries.first(where: { $0.name == ".gitignore" }) else {
       throw CocoaError(.fileNoSuchFile)
     }
-    let data = try repository.lookupBlob(for: gitIgnoreEntry.1)
+    let data = try repository.lookupBlob(for: gitIgnoreEntry)
     let string = String(data: data, encoding: .utf8)!
     print(string)
   }

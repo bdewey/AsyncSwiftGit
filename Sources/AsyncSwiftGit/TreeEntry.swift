@@ -4,10 +4,16 @@ import Clibgit2
 import Foundation
 
 /// Contains the properties of a `git_tree_entry`
-public struct Entry {
-  init(_ entry: OpaquePointer) {
+public struct TreeEntry: Hashable {
+  init(_ entry: OpaquePointer, root: String? = nil) {
     self.objectID = ObjectID(git_tree_entry_id(entry)!.pointee)
-    self.name = String(validatingUTF8: git_tree_entry_name(entry)) ?? "nil"
+    let entryName = String(validatingUTF8: git_tree_entry_name(entry))
+    if let root = root {
+      assert(root.isEmpty || root.last == "/")
+      self.name = root + (entryName ?? "")
+    } else {
+      self.name = entryName ?? ""
+    }
     self.type = ObjectType(rawValue: git_tree_entry_type(entry).rawValue) ?? .invalid
   }
 
@@ -22,17 +28,8 @@ public struct Entry {
   public let type: ObjectType
 }
 
-extension Entry: CustomStringConvertible {
+extension TreeEntry: CustomStringConvertible {
   public var description: String {
-    description(treePathSegments: [])
-  }
-
-  /// Prints a formatted description of this entry.
-  /// - parameter pathPrefix: The array of `Tree` entry names that lead to the `Tree` that contains this entry.
-  public func description(treePathSegments: [String]) -> String {
-    var treePathSegments = treePathSegments
-    treePathSegments.append(name)
-    let fullName = treePathSegments.joined(separator: "/")
-    return "\(objectID) \(type) \(fullName)"
+    return "\(objectID) \(type) \(name)"
   }
 }
