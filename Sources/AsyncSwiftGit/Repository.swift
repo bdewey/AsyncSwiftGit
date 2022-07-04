@@ -176,28 +176,30 @@ public final class Repository {
   public func fetchProgress(remote: String, credentials: Credentials = .default) -> AsyncThrowingStream<FetchProgress, Error> {
     let fetchOptions = FetchOptions(credentials: credentials, progressCallback: nil)
     let resultStream = AsyncThrowingStream<FetchProgress, Error> { continuation in
-      fetchOptions.progressCallback = { progressResult in
-        continuation.yield(progressResult)
-      }
-      do {
-        let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
-          git_remote_lookup(&pointer, repositoryPointer, remote)
-        })
-        defer {
-          git_remote_free(remotePointer)
+      Task {
+        fetchOptions.progressCallback = { progressResult in
+          continuation.yield(progressResult)
         }
-        if let remoteURL = git_remote_url(remotePointer) {
-          let remoteURLString = String(cString: remoteURL)
-          print("Fetching from \(remoteURLString)")
-        }
-        try GitError.check(apiName: "git_remote_fetch", closure: {
-          fetchOptions.withOptions { options in
-            git_remote_fetch(remotePointer, nil, &options, "fetch")
+        do {
+          let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
+            git_remote_lookup(&pointer, repositoryPointer, remote)
+          })
+          defer {
+            git_remote_free(remotePointer)
           }
-        })
-        continuation.finish()
-      } catch {
-        continuation.finish(throwing: error)
+          if let remoteURL = git_remote_url(remotePointer) {
+            let remoteURLString = String(cString: remoteURL)
+            print("Fetching from \(remoteURLString)")
+          }
+          try GitError.check(apiName: "git_remote_fetch", closure: {
+            fetchOptions.withOptions { options in
+              git_remote_fetch(remotePointer, nil, &options, "fetch")
+            }
+          })
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
+        }
       }
     }
     return resultStream
@@ -216,56 +218,59 @@ public final class Repository {
     checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE
   ) -> AsyncThrowingStream<CheckoutProgress, Error> {
     AsyncThrowingStream { continuation in
-      do {
-        try checkNormalState()
-        let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
-          git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
-        })
-        defer {
-          git_annotated_commit_free(annotatedCommit)
-        }
-        let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
-          git_commit_lookup(&pointer, repositoryPointer, git_annotated_commit_id(annotatedCommit))
-        })
-        defer {
-          git_commit_free(commitPointer)
-        }
-        let checkoutOptions = CheckoutOptions(checkoutStrategy: checkoutStrategy) { progress in
-          continuation.yield(progress)
-        }
-        try checkoutOptions.withOptions { options in
-          try GitError.check(apiName: "git_checkout_tree", closure: {
-            git_checkout_tree(repositoryPointer, commitPointer, &options)
-          })
-        }
-        if let annotatedCommitRefname = git_annotated_commit_ref(annotatedCommit) {
-          let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
-            git_reference_lookup(&pointer, repositoryPointer, annotatedCommitRefname)
+      Task {
+        do {
+          try checkNormalState()
+          let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
+            git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
           })
           defer {
-            git_reference_free(referencePointer)
+            git_annotated_commit_free(annotatedCommit)
           }
-          var targetRefname = annotatedCommitRefname
-          if (git_reference_is_remote(referencePointer) != 0) {
-            let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create_from_annotated", closure: { pointer in
-              git_branch_create_from_annotated(&pointer, repositoryPointer, annotatedCommitRefname, annotatedCommit, 0)
+          let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
+            git_commit_lookup(&pointer, repositoryPointer, git_annotated_commit_id(annotatedCommit))
+          })
+          defer {
+            git_commit_free(commitPointer)
+          }
+          let checkoutOptions = CheckoutOptions(checkoutStrategy: checkoutStrategy) { progress in
+            continuation.yield(progress)
+            print("yielded")
+          }
+          try checkoutOptions.withOptions { options in
+            try GitError.check(apiName: "git_checkout_tree", closure: {
+              git_checkout_tree(repositoryPointer, commitPointer, &options)
+            })
+          }
+          if let annotatedCommitRefname = git_annotated_commit_ref(annotatedCommit) {
+            let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
+              git_reference_lookup(&pointer, repositoryPointer, annotatedCommitRefname)
             })
             defer {
-              git_reference_free(branchPointer)
+              git_reference_free(referencePointer)
             }
-            targetRefname = git_reference_name(branchPointer)
+            var targetRefname = annotatedCommitRefname
+            if (git_reference_is_remote(referencePointer) != 0) {
+              let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create_from_annotated", closure: { pointer in
+                git_branch_create_from_annotated(&pointer, repositoryPointer, annotatedCommitRefname, annotatedCommit, 0)
+              })
+              defer {
+                git_reference_free(branchPointer)
+              }
+              targetRefname = git_reference_name(branchPointer)
+            }
+            try GitError.check(apiName: "git_repository_set_head", closure: {
+              git_repository_set_head(repositoryPointer, targetRefname)
+            })
+          } else {
+            try GitError.check(apiName: "git_repository_set_head_detached_from_annotated", closure: {
+              git_repository_set_head_detached_from_annotated(repositoryPointer, annotatedCommit)
+            })
           }
-          try GitError.check(apiName: "git_repository_set_head", closure: {
-            git_repository_set_head(repositoryPointer, targetRefname)
-          })
-        } else {
-          try GitError.check(apiName: "git_repository_set_head_detached_from_annotated", closure: {
-            git_repository_set_head_detached_from_annotated(repositoryPointer, annotatedCommit)
-          })
+          continuation.finish()
+        } catch {
+          continuation.finish(throwing: error)
         }
-        continuation.finish()
-      } catch {
-        continuation.finish(throwing: error)
       }
     }
   }
