@@ -168,6 +168,41 @@ public final class Repository {
     })
   }
 
+  public func branchExists(named name: String) throws -> Bool {
+    do {
+      let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_lookup", closure: { pointer in
+        git_branch_lookup(&pointer, repositoryPointer, name, GIT_BRANCH_LOCAL)
+      })
+      git_reference_free(branchPointer)
+      return true
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return false
+      } else {
+        throw error
+      }
+    }
+  }
+
+  public func createBranch(named name: String, target: String, force: Bool = false) throws {
+    let referencePointer = try GitError.checkAndReturn(apiName: "", closure: { pointer in
+      git_reference_dwim(&pointer, repositoryPointer, target)
+    })
+    defer {
+      git_reference_free(referencePointer)
+    }
+    let commitPointer = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
+      git_reference_peel(&pointer, referencePointer, GIT_OBJECT_COMMIT)
+    })
+    defer {
+      git_object_free(commitPointer)
+    }
+    let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create", closure: { pointer in
+      git_branch_create(&pointer, repositoryPointer, name, commitPointer, force ? 1 : 0)
+    })
+    git_reference_free(branchPointer)
+  }
+
   /// Fetch from a named remote.
   /// - Parameters:
   ///   - remote: The remote to fetch
@@ -214,15 +249,23 @@ public final class Repository {
   }
 
   public func checkoutProgress(
-    revspec: String,
+    referenceShorthand: String,
     checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE
   ) -> AsyncThrowingStream<CheckoutProgress, Error> {
     AsyncThrowingStream { continuation in
       Task {
         do {
           try checkNormalState()
-          let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
-            git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
+          let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_dwim", closure: { pointer in
+            git_reference_dwim(&pointer, repositoryPointer, referenceShorthand)
+          })
+          defer {
+            git_reference_free(referencePointer)
+          }
+          let referenceName = String(cString: git_reference_name(referencePointer))
+          print("Checking out \(referenceName)")
+          let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_ref", closure: { pointer in
+            git_annotated_commit_from_ref(&pointer, repositoryPointer, referencePointer)
           })
           defer {
             git_annotated_commit_free(annotatedCommit)
@@ -235,38 +278,39 @@ public final class Repository {
           }
           let checkoutOptions = CheckoutOptions(checkoutStrategy: checkoutStrategy) { progress in
             continuation.yield(progress)
-            print("yielded")
           }
           try checkoutOptions.withOptions { options in
             try GitError.check(apiName: "git_checkout_tree", closure: {
               git_checkout_tree(repositoryPointer, commitPointer, &options)
             })
           }
-          if let annotatedCommitRefname = git_annotated_commit_ref(annotatedCommit) {
-            let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
-              git_reference_lookup(&pointer, repositoryPointer, annotatedCommitRefname)
-            })
-            defer {
-              git_reference_free(referencePointer)
-            }
-            var targetRefname = annotatedCommitRefname
-            if (git_reference_is_remote(referencePointer) != 0) {
+
+          var targetRefname = git_reference_name(referencePointer)
+          if (git_reference_is_remote(referencePointer) != 0) {
+            do {
               let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create_from_annotated", closure: { pointer in
-                git_branch_create_from_annotated(&pointer, repositoryPointer, annotatedCommitRefname, annotatedCommit, 0)
+                git_branch_create_from_annotated(&pointer, repositoryPointer, referenceName, annotatedCommit, 0)
+              })
+              defer {
+                git_reference_free(branchPointer)
+              }
+              targetRefname = git_reference_name(branchPointer)
+            } catch let error as GitError {
+              guard error.errorCode == GIT_EEXISTS.rawValue else {
+                throw error
+              }
+              let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create_from_annotated", closure: { pointer in
+                git_branch_lookup(&pointer, repositoryPointer, referenceName, GIT_BRANCH_LOCAL)
               })
               defer {
                 git_reference_free(branchPointer)
               }
               targetRefname = git_reference_name(branchPointer)
             }
-            try GitError.check(apiName: "git_repository_set_head", closure: {
-              git_repository_set_head(repositoryPointer, targetRefname)
-            })
-          } else {
-            try GitError.check(apiName: "git_repository_set_head_detached_from_annotated", closure: {
-              git_repository_set_head_detached_from_annotated(repositoryPointer, annotatedCommit)
-            })
           }
+          try GitError.check(apiName: "git_repository_set_head", closure: {
+            git_repository_set_head(repositoryPointer, targetRefname)
+          })
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -279,7 +323,7 @@ public final class Repository {
     revspec: String,
     checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE
   ) async throws {
-    for try await _ in checkoutProgress(revspec: revspec, checkoutStrategy: checkoutStrategy) {}
+    for try await _ in checkoutProgress(referenceShorthand: revspec, checkoutStrategy: checkoutStrategy) {}
   }
 
   public var statusEntries: [StatusEntry] {

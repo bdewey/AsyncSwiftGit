@@ -68,7 +68,7 @@ final class RepositoryTests: XCTestCase {
     let repository = try Repository(createAt: location, bare: false)
     try repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")
-    for try await progress in repository.checkoutProgress(revspec: "origin/main") {
+    for try await progress in repository.checkoutProgress(referenceShorthand: "origin/main") {
       print(progress)
     }
     try repository.checkNormalState()
