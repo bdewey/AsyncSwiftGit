@@ -450,6 +450,7 @@ public final class Repository {
     var count = 0
     try enumerateCommits(revspec: revspec) { _ in
       count += 1
+      return true
     }
     return count
   }
@@ -856,7 +857,7 @@ public final class Repository {
     for try await _ in try pushProgress(credentials: credentials) {}
   }
 
-  public func enumerateCommits(revspec: String, callback: (Commit) -> Void) throws {
+  public func enumerateCommits(revspec: String, callback: (Commit) -> Bool) throws {
     // TODO: Per the documentation, we should reuse this walker.
     let revwalkPointer = try GitError.checkAndReturn(apiName: "git_revwalk_new", closure: { pointer in
       git_revwalk_new(&pointer, repositoryPointer)
@@ -876,14 +877,15 @@ public final class Repository {
     })
     var oid = git_oid()
     var walkResult = git_revwalk_next(&oid, revwalkPointer)
-    while walkResult == 0 {
+    var stop: Bool = false
+    while walkResult == 0 && !stop {
       let historyCommitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { historyCommitPointer in
         git_commit_lookup(&historyCommitPointer, repositoryPointer, &oid)
       })
-      callback(Commit(historyCommitPointer))
+      stop = !callback(Commit(historyCommitPointer))
       walkResult = git_revwalk_next(&oid, revwalkPointer)
     }
-    if walkResult != GIT_ITEROVER.rawValue {
+    if walkResult != GIT_ITEROVER.rawValue && !stop {
       throw GitError(errorCode: walkResult, apiName: "git_revwalk_next")
     }
   }
@@ -896,6 +898,7 @@ public final class Repository {
       do {
         try enumerateCommits(revspec: revspec) { commit in
           continuation.yield(commit)
+          return true
         }
         continuation.finish()
       } catch {
