@@ -194,12 +194,15 @@ final class RepositoryTests: XCTestCase {
     let testText = "This is some sample text.\n"
     try testText.write(to: repository.workingDirectoryURL!.appendingPathComponent("test.txt"), atomically: true, encoding: .utf8)
     try repository.add()
-    let firstCommit = try repository.commit(message: "First commit", signature: signature)
-    print("First commit: \(firstCommit)")
+    let firstCommitOID = try repository.commit(message: "First commit", signature: signature)
+    print("First commit: \(firstCommitOID)")
     try "Hello, world\n".write(to: repository.workingDirectoryURL!.appendingPathComponent("hello.txt"), atomically: true, encoding: .utf8)
     try repository.add()
-    let secondCommit = try repository.commit(message: "Second commit", signature: signature)
-    print("Second commit: \(secondCommit)")
+    let secondCommitOID = try repository.commit(message: "Second commit", signature: signature)
+    print("Second commit: \(secondCommitOID)")
+
+    let firstDiff = try repository.diff(nil, try repository.lookupCommit(for: firstCommitOID).tree)
+    XCTAssertEqual(firstDiff.count, 1)
   }
 
   func testCommitsAheadBehind() async throws {

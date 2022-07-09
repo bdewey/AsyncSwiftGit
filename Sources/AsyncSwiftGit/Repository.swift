@@ -33,6 +33,9 @@ public final class Repository {
   /// The Clibgit2 repository pointer managed by this actor.
   private let repositoryPointer: OpaquePointer
 
+  /// If true, this class is the owner of `repositoryPointer` and should free it on deinit.
+  private let isOwner: Bool
+
   /// The working directory of the repository, or `nil` if this is a bare repository.
   public nonisolated let workingDirectoryURL: URL?
 
@@ -55,7 +58,7 @@ public final class Repository {
         }
       }
     }
-    self.init(repositoryPointer: repositoryPointer)
+    self.init(repositoryPointer: repositoryPointer, isOwner: true)
   }
 
   /// Opens a git repository at a specified location.
@@ -66,11 +69,12 @@ public final class Repository {
         git_repository_open(&pointer, fileSystemPath)
       }
     }
-    self.init(repositoryPointer: repositoryPointer)
+    self.init(repositoryPointer: repositoryPointer, isOwner: true)
   }
 
-  private init(repositoryPointer: OpaquePointer) {
+  init(repositoryPointer: OpaquePointer, isOwner: Bool) {
     self.repositoryPointer = repositoryPointer
+    self.isOwner = isOwner
     if let pathPointer = git_repository_workdir(repositoryPointer), let path = String(validatingUTF8: pathPointer) {
       self.workingDirectoryURL = URL(fileURLWithPath: path, isDirectory: true)
     } else {
@@ -79,7 +83,9 @@ public final class Repository {
   }
 
   deinit {
-    git_repository_free(repositoryPointer)
+    if isOwner {
+      git_repository_free(repositoryPointer)
+    }
   }
 
   public static func clone(
@@ -122,7 +128,7 @@ public final class Repository {
             }
           })
         }
-        continuation.yield(.completed(Repository(repositoryPointer: repositoryPointer)))
+        continuation.yield(.completed(Repository(repositoryPointer: repositoryPointer, isOwner: trueo)))
         continuation.finish()
       } catch {
         continuation.finish(throwing: error)
@@ -743,6 +749,14 @@ public final class Repository {
     return data
   }
 
+  public func lookupCommit(for id: ObjectID) throws -> Commit {
+    var objectID = id.oid
+    let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
+      git_commit_lookup(&pointer, repositoryPointer, &objectID)
+    })
+    return Commit(commitPointer)
+  }
+
   public func add(_ pathspec: String = "*") throws {
     let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
       git_repository_index(&pointer, repositoryPointer)
@@ -905,6 +919,13 @@ public final class Repository {
         continuation.finish(throwing: error)
       }
     }
+  }
+
+  public func diff(_ oldTree: Tree?, _ newTree: Tree?) throws -> Diff {
+    let diffPointer = try GitError.checkAndReturn(apiName: "git_diff_tree_to_tree", closure: { pointer in
+      git_diff_tree_to_tree(&pointer, repositoryPointer, oldTree?.treePointer, newTree?.treePointer, nil)
+    })
+    return Diff(diffPointer)
   }
 }
 

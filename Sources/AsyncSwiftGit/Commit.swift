@@ -32,6 +32,40 @@ public final class Commit {
       return ""
     }
   }
+
+  public var tree: Tree {
+    get throws {
+      let treePointer = try GitError.checkAndReturn(apiName: "git_commit_tree", closure: { pointer in
+        git_commit_tree(&pointer, commit)
+      })
+      return Tree(treePointer)
+    }
+  }
+
+  public var parents: [Commit] {
+    (0 ..< git_commit_parentcount(commit)).map { i in
+      var parentCommitPointer: OpaquePointer?
+      git_commit_parent(&parentCommitPointer, commit, UInt32(i))
+      return Commit(parentCommitPointer!)
+    }
+  }
+
+  public var changedPaths: Set<String> {
+    get throws {
+      let repository = Repository(repositoryPointer: git_commit_owner(commit), isOwner: false)
+      var changedPaths: Set<String> = []
+      let newTree = try tree
+      for parent in parents {
+        let oldTree = try parent.tree
+        let diff = try repository.diff(oldTree, newTree)
+        for delta in diff {
+          changedPaths.insert(delta.oldFile.path)
+          changedPaths.insert(delta.newFile.path)
+        }
+      }
+      return changedPaths
+    }
+  }
 }
 
 extension Commit: CustomStringConvertible {
