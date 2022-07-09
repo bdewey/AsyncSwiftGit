@@ -128,7 +128,7 @@ public final class Repository {
             }
           })
         }
-        continuation.yield(.completed(Repository(repositoryPointer: repositoryPointer, isOwner: trueo)))
+        continuation.yield(.completed(Repository(repositoryPointer: repositoryPointer, isOwner: true)))
         continuation.finish()
       } catch {
         continuation.finish(throwing: error)
