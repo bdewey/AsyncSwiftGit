@@ -1,4 +1,4 @@
-// Copyright © 2019-2022 Brian's Brain. All rights reserved.
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE for details.
 
 import Foundation
 

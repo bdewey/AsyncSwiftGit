@@ -1,3 +1,5 @@
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE for details.
+
 import Clibgit2
 import Foundation
 
@@ -13,22 +15,22 @@ public struct StatusEntry: Hashable {
       self.rawValue = Int(gitStatus.rawValue)
     }
 
-    public static let current                   = Status([])
-    public static let indexHeadNew              = Status(rawValue: 1 << 0)
-    public static let indexHeadModified         = Status(rawValue: 1 << 1)
-    public static let indexHeadDeleted          = Status(rawValue: 1 << 2)
-    public static let indexHeadRenamed          = Status(rawValue: 1 << 3)
-    public static let indexHeadTypechange       = Status(rawValue: 1 << 4)
+    public static let current = Status([])
+    public static let indexHeadNew = Status(rawValue: 1 << 0)
+    public static let indexHeadModified = Status(rawValue: 1 << 1)
+    public static let indexHeadDeleted = Status(rawValue: 1 << 2)
+    public static let indexHeadRenamed = Status(rawValue: 1 << 3)
+    public static let indexHeadTypechange = Status(rawValue: 1 << 4)
 
-    public static let workdirIndexNew           = Status(rawValue: 1 << 7)
-    public static let workdirIndexModified      = Status(rawValue: 1 << 8)
-    public static let workdirIndexDeleted       = Status(rawValue: 1 << 9)
-    public static let workdirIndexTypechange    = Status(rawValue: 1 << 10)
-    public static let workdirIndexRenamed       = Status(rawValue: 1 << 11)
-    public static let workdirIndexUnreadable    = Status(rawValue: 1 << 12)
+    public static let workdirIndexNew = Status(rawValue: 1 << 7)
+    public static let workdirIndexModified = Status(rawValue: 1 << 8)
+    public static let workdirIndexDeleted = Status(rawValue: 1 << 9)
+    public static let workdirIndexTypechange = Status(rawValue: 1 << 10)
+    public static let workdirIndexRenamed = Status(rawValue: 1 << 11)
+    public static let workdirIndexUnreadable = Status(rawValue: 1 << 12)
 
-    public static let ignored                   = Status(rawValue: 1 << 14)
-    public static let conflicted                = Status(rawValue: 1 << 15)
+    public static let ignored = Status(rawValue: 1 << 14)
+    public static let conflicted = Status(rawValue: 1 << 15)
   }
 
   public enum PathPair: Hashable {
@@ -66,8 +68,8 @@ public struct StatusEntry: Hashable {
       guard let delta = delta else {
         return nil
       }
-      let oldPath = delta.pointee.old_file.path.flatMap({ String(cString: $0) })
-      let newPath = delta.pointee.new_file.path.flatMap({ String(cString: $0) })
+      let oldPath = delta.pointee.old_file.path.flatMap { String(cString: $0) }
+      let newPath = delta.pointee.new_file.path.flatMap { String(cString: $0) }
 
       switch (oldPath, newPath) {
       case (.none, .none):
@@ -94,7 +96,7 @@ public struct StatusEntry: Hashable {
     self.status = status
     self.headToIndexPath = PathPair(gitStatusEntry.head_to_index)
     self.indexToWorkdirPath = PathPair(gitStatusEntry.index_to_workdir)
-    if (headToIndexPath == nil) && (indexToWorkdirPath == nil) {
+    if headToIndexPath == nil, indexToWorkdirPath == nil {
       return nil
     }
   }

@@ -30,6 +30,6 @@ public struct TreeEntry: Hashable {
 
 extension TreeEntry: CustomStringConvertible {
   public var description: String {
-    return "\(objectID) \(type) \(name)"
+    "\(objectID) \(type) \(name)"
   }
 }

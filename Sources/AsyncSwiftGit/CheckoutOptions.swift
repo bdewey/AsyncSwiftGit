@@ -62,6 +62,6 @@ private func checkoutProgressCallback(path: UnsafePointer<CChar>?, completedStep
     return
   }
   let checkoutOptions = CheckoutOptions.fromPointer(payload)
-  let pathString = path.flatMap({ String(cString: $0) })
+  let pathString = path.flatMap { String(cString: $0) }
   checkoutOptions.progressCallback?(CheckoutProgress(path: pathString, completedSteps: completedSteps, totalSteps: totalSteps))
 }

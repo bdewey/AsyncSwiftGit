@@ -1,8 +1,8 @@
-// Copyright © 2019-2022 Brian's Brain. All rights reserved.
+// Copyright © 2022 Brian Dewey. Available under the MIT License, see LICENSE for details.
 
 import SwiftUI
 
-@available(iOS 15.0, macCatalyst 15.0, macOS 12.0,  *)
+@available(iOS 15.0, macCatalyst 15.0, macOS 12.0, *)
 public struct SyncSettingsForm: View {
   @Binding public var settings: GitConnectionSettings
   public var shouldShowValidIndicator = false
@@ -72,7 +72,7 @@ public struct SyncSettingsForm: View {
   }
 }
 
-@available(iOS 15.0, macCatalyst 15.0, macOS 12.0,  *)
+@available(iOS 15.0, macCatalyst 15.0, macOS 12.0, *)
 struct SSHKeyModifier: ViewModifier {
   func body(content: Content) -> some View {
     content
@@ -84,14 +84,14 @@ struct SSHKeyModifier: ViewModifier {
   }
 }
 
-@available(iOS 15.0, macCatalyst 15.0, macOS 12.0,  *)
+@available(iOS 15.0, macCatalyst 15.0, macOS 12.0, *)
 extension View {
   func sshKey() -> some View {
     modifier(SSHKeyModifier())
   }
 }
 
-@available(iOS 15.0, macCatalyst 15.0, macOS 12.0,  *)
+@available(iOS 15.0, macCatalyst 15.0, macOS 12.0, *)
 struct DebugJournalRepositorySettingsView: View {
   @State private var settings = GitConnectionSettings()
 
@@ -103,7 +103,7 @@ struct DebugJournalRepositorySettingsView: View {
   }
 }
 
-@available(iOS 15.0, macCatalyst 15.0, macOS 12.0,  *)
+@available(iOS 15.0, macCatalyst 15.0, macOS 12.0, *)
 struct JournalRepositorySettingsView_Previews: PreviewProvider {
   static var previews: some View {
     DebugJournalRepositorySettingsView()
