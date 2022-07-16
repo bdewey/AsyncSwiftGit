@@ -921,7 +921,7 @@ public final class Repository {
     })
   }
 
-  public func pushProgress(credentials: Credentials = .default) throws -> AsyncThrowingStream<PushProgress, Error> {
+  public func pushProgress(refspec: String? = nil, credentials: Credentials = .default) -> AsyncThrowingStream<PushProgress, Error> {
     guard let head = try? head else {
       // Assume that if we can't get HEAD, it's because the repo is empty. Ergo, nothing to push.
       return AsyncThrowingStream { continuation in
@@ -962,7 +962,7 @@ public final class Repository {
   }
 
   public func push(credentials: Credentials = .default) async throws {
-    for try await _ in try pushProgress(credentials: credentials) {}
+    for try await _ in pushProgress(credentials: credentials) {}
   }
 
   public func enumerateCommits(revspec: String, callback: (Commit) -> Bool) throws {
