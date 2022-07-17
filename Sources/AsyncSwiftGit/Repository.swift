@@ -275,7 +275,7 @@ public final class Repository {
     return String(cString: buffer.ptr)
   }
 
-  public typealias FetchProgressStream = AsyncThrowingStream<Progress<FetchProgress, String>, Error>
+  public typealias FetchProgressStream = AsyncThrowingStream<Progress<FetchProgress, String?>, Error>
 
   /// Fetch from a named remote.
   /// - Parameters:
@@ -305,15 +305,23 @@ public final class Repository {
               git_remote_fetch(remotePointer, nil, &options, "fetch")
             }
           })
-          var buffer = git_buf()
-          try GitError.check(apiName: "git_remote_default_branch", closure: {
-            git_remote_default_branch(&buffer, remotePointer)
-          })
-          defer {
-            git_buf_free(&buffer)
+          do {
+            var buffer = git_buf()
+            try GitError.check(apiName: "git_remote_default_branch", closure: {
+              git_remote_default_branch(&buffer, remotePointer)
+            })
+            defer {
+              git_buf_free(&buffer)
+            }
+            let defaultBranch = String(cString: buffer.ptr)
+            continuation.yield(.completed(defaultBranch))
+          } catch let error as GitError {
+            if error.errorCode == GIT_ENOTFOUND.rawValue {
+              continuation.yield(.completed(nil))
+            } else {
+              throw error
+            }
           }
-          let defaultBranch = String(cString: buffer.ptr)
-          continuation.yield(.completed(defaultBranch))
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -323,11 +331,13 @@ public final class Repository {
     return resultStream
   }
 
+  @discardableResult
   /// Fetch from a named remote, waiting until the fetch is 100% complete before returning.
   /// - Parameters:
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
-  public func fetch(remote: String, credentials: Credentials = .default) async throws -> String {
+  /// - returns: The reference name for default branch for the remote.
+  public func fetch(remote: String, credentials: Credentials = .default) async throws -> String? {
     var defaultBranch: String!
     for try await progress in fetchProgress(remote: remote, credentials: credentials) {
       switch progress {
