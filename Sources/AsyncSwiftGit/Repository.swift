@@ -197,6 +197,20 @@ public final class Repository {
     }
   }
 
+  public func lookupReference(name: String) throws -> Reference? {
+    do {
+      let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
+        git_reference_lookup(&pointer, repositoryPointer, name)
+      })
+      return Reference(pointer: referencePointer)
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return nil
+      }
+      throw error
+    }
+  }
+
   /// Returns the remote name for a remote tracking branch.
   /// - Parameter branchName: The full branch name
   /// - Returns: The remote name
