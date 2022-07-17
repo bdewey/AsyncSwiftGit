@@ -592,6 +592,18 @@ public final class Repository {
     }
   }
 
+  public func commitsAheadBehind(sourceReference: Reference, targetReference: Reference) throws -> (ahead: Int, behind: Int) {
+    var sourceObjectID = try sourceReference.commit.objectID
+    var targetObjectID = try targetReference.commit.objectID
+
+    var ahead = 0
+    var behind = 0
+    try GitError.check(apiName: "git_graph_ahead_behind", closure: {
+      git_graph_ahead_behind(&ahead, &behind, repositoryPointer, &sourceObjectID.oid, &targetObjectID.oid)
+    })
+    return (ahead: ahead, behind: behind)
+  }
+
   private func commitMerge(revspec: String, annotatedCommit: OpaquePointer, signature: Signature) throws -> ObjectID {
     let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
       git_repository_index(&pointer, repositoryPointer)
@@ -989,13 +1001,7 @@ public final class Repository {
     })
   }
 
-  public func pushProgress(refspec: String? = nil, credentials: Credentials = .default) -> AsyncThrowingStream<PushProgress, Error> {
-    guard let head = try? head else {
-      // Assume that if we can't get HEAD, it's because the repo is empty. Ergo, nothing to push.
-      return AsyncThrowingStream { continuation in
-        continuation.finish()
-      }
-    }
+  public func pushProgress(remoteName: String, refspecs: [String], credentials: Credentials = .default) -> AsyncThrowingStream<PushProgress, Error> {
     let pushOptions = PushOptions(credentials: credentials)
     let stream = AsyncThrowingStream<PushProgress, Error> { continuation in
       pushOptions.progressCallback = { progress in
@@ -1003,23 +1009,24 @@ public final class Repository {
       }
       do {
         let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
-          git_remote_lookup(&pointer, repositoryPointer, "origin")
+          git_remote_lookup(&pointer, repositoryPointer, remoteName)
         })
         defer {
           git_remote_free(remotePointer)
         }
-        guard let headName = head.name else {
-          throw GitError(errorCode: -312, apiName: "git_remote_push", customMessage: "Could not determine the name of the current branch")
+        var refspecPointers = refspecs.map { pushRefspec in
+          let dirPointer = UnsafeMutablePointer<Int8>(mutating: (pushRefspec as NSString).utf8String)
+          return dirPointer
         }
-        var dirPointer = UnsafeMutablePointer<Int8>(mutating: (headName as NSString).utf8String)
-        var paths = withUnsafeMutablePointer(to: &dirPointer) {
-          git_strarray(strings: $0, count: 1)
+        let pointerCount = refspecPointers.count
+        try refspecPointers.withUnsafeMutableBufferPointer { foo in
+          var paths = git_strarray(strings: foo.baseAddress, count: pointerCount)
+          try GitError.check(apiName: "git_remote_push", closure: {
+            pushOptions.withOptions { options in
+              git_remote_push(remotePointer, &paths, &options)
+            }
+          })
         }
-        try GitError.check(apiName: "git_remote_push", closure: {
-          pushOptions.withOptions { options in
-            git_remote_push(remotePointer, &paths, &options)
-          }
-        })
         continuation.finish()
         Logger.repository.info("Done pushing")
       } catch {
@@ -1029,8 +1036,8 @@ public final class Repository {
     return stream
   }
 
-  public func push(credentials: Credentials = .default) async throws {
-    for try await _ in pushProgress(credentials: credentials) {}
+  public func push(remoteName: String, refspecs: [String], credentials: Credentials = .default) async throws {
+    for try await _ in pushProgress(remoteName: remoteName, refspecs: refspecs, credentials: credentials) {}
   }
 
   public func enumerateCommits(revspec: String, callback: (Commit) -> Bool) throws {
