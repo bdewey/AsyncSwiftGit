@@ -167,7 +167,7 @@ public final class Repository {
     git_remote_free(remotePointer)
   }
 
-  /// Deletes the named remote from the reposityr.
+  /// Deletes the named remote from the repository.
   public func deleteRemote(_ name: String) throws {
     try GitError.check(apiName: "git_remote_delete", closure: {
       git_remote_delete(repositoryPointer, name)
@@ -195,6 +195,17 @@ public final class Repository {
     } else {
       throw GitError(errorCode: result, apiName: "git_branch_next")
     }
+  }
+
+  /// Returns the remote name for a remote tracking branch.
+  /// - Parameter branchName: The full branch name
+  /// - Returns: The remote name
+  public func remoteName(branchName: String) throws -> String {
+    var buffer = git_buf()
+    try GitError.check(apiName: "git_branch_remote_name", closure: {
+      git_branch_remote_name(&buffer, repositoryPointer, branchName)
+    })
+    return String(cString: buffer.ptr)
   }
 
   public func branchExists(named name: String) throws -> Bool {
@@ -264,17 +275,19 @@ public final class Repository {
     return String(cString: buffer.ptr)
   }
 
+  public typealias FetchProgressStream = AsyncThrowingStream<Progress<FetchProgress, String>, Error>
+
   /// Fetch from a named remote.
   /// - Parameters:
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
   /// - returns: An AsyncThrowingStream that emits the fetch progress. The fetch is not done until this stream finishes yielding values.
-  public func fetchProgress(remote: String, credentials: Credentials = .default) -> AsyncThrowingStream<FetchProgress, Error> {
+  public func fetchProgress(remote: String, credentials: Credentials = .default) -> FetchProgressStream {
     let fetchOptions = FetchOptions(credentials: credentials, progressCallback: nil)
-    let resultStream = AsyncThrowingStream<FetchProgress, Error> { continuation in
+    let resultStream = FetchProgressStream { continuation in
       Task {
         fetchOptions.progressCallback = { progressResult in
-          continuation.yield(progressResult)
+          continuation.yield(.progress(progressResult))
         }
         do {
           let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
@@ -292,6 +305,15 @@ public final class Repository {
               git_remote_fetch(remotePointer, nil, &options, "fetch")
             }
           })
+          var buffer = git_buf()
+          try GitError.check(apiName: "git_remote_default_branch", closure: {
+            git_remote_default_branch(&buffer, remotePointer)
+          })
+          defer {
+            git_buf_free(&buffer)
+          }
+          let defaultBranch = String(cString: buffer.ptr)
+          continuation.yield(.completed(defaultBranch))
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -305,8 +327,17 @@ public final class Repository {
   /// - Parameters:
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
-  public func fetch(remote: String, credentials: Credentials = .default) async throws {
-    for try await _ in fetchProgress(remote: remote, credentials: credentials) {}
+  public func fetch(remote: String, credentials: Credentials = .default) async throws -> String {
+    var defaultBranch: String!
+    for try await progress in fetchProgress(remote: remote, credentials: credentials) {
+      switch progress {
+      case .completed(let branch):
+        defaultBranch = branch
+      default:
+        break
+      }
+    }
+    return defaultBranch
   }
 
   public func checkoutProgress(
@@ -546,7 +577,7 @@ public final class Repository {
     }
     let headReference = try head
     let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
-      git_reference_peel(&pointer, headReference.pointer, GIT_OBJECT_COMMIT)
+      git_reference_peel(&pointer, headReference.referencePointer, GIT_OBJECT_COMMIT)
     })
     defer {
       git_object_free(headCommit)
@@ -575,7 +606,7 @@ public final class Repository {
       git_commit_create(
         &pointer,
         repositoryPointer,
-        git_reference_name(headReference.pointer),
+        git_reference_name(headReference.referencePointer),
         signature.signaturePointer,
         signature.signaturePointer,
         nil,
@@ -709,7 +740,7 @@ public final class Repository {
     })
     let newTarget = try GitError.checkAndReturn(apiName: "git_reference_set_target", closure: { pointer in
       var oid = objectID.oid
-      return git_reference_set_target(&pointer, headReference.pointer, &oid, nil)
+      return git_reference_set_target(&pointer, headReference.referencePointer, &oid, nil)
     })
     git_reference_free(newTarget)
   }
@@ -764,6 +795,19 @@ public final class Repository {
     let treePointer = try GitError.checkAndReturn(apiName: "git_tree_lookup", closure: { pointer in
       var oid = objectID.oid
       return git_tree_lookup(&pointer, repositoryPointer, &oid)
+    })
+    return Tree(treePointer)
+  }
+
+  public func lookupTree(for refspec: String) throws -> Tree {
+    let reference = try GitError.checkAndReturn(apiName: "git_reference_dwim", closure: { pointer in
+      git_reference_dwim(&pointer, repositoryPointer, refspec)
+    })
+    defer {
+      git_reference_free(reference)
+    }
+    let treePointer = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
+      git_reference_peel(&pointer, reference, GIT_OBJECT_TREE)
     })
     return Tree(treePointer)
   }
