@@ -592,16 +592,31 @@ public final class Repository {
     }
   }
 
-  public func commitsAheadBehind(sourceReference: Reference, targetReference: Reference) throws -> (ahead: Int, behind: Int) {
-    var sourceObjectID = try sourceReference.commit.objectID
-    var targetObjectID = try targetReference.commit.objectID
+  public func commitsAheadBehind(sourceReference: Reference?, targetReference: Reference?) throws -> (ahead: Int, behind: Int) {
+    let sourceObjectID = try sourceReference?.commit.objectID
+    let targetObjectID = try targetReference?.commit.objectID
 
-    var ahead = 0
-    var behind = 0
-    try GitError.check(apiName: "git_graph_ahead_behind", closure: {
-      git_graph_ahead_behind(&ahead, &behind, repositoryPointer, &sourceObjectID.oid, &targetObjectID.oid)
-    })
-    return (ahead: ahead, behind: behind)
+    switch (sourceObjectID, targetObjectID) {
+    case (.none, .none):
+      return (ahead: 0, behind: 0)
+    case (.some, .none):
+      let commits = try sourceReference?.name.flatMap({ revspec in
+        try countCommits(revspec: revspec)
+      }) ?? 0
+      return (ahead: commits, behind: 0)
+    case (.none, .some):
+      let commits = try targetReference?.name.flatMap({ revspec in
+        try countCommits(revspec: revspec)
+      }) ?? 0
+      return (ahead: 0, behind: commits)
+    case (.some(var headOID), .some(var otherOID)):
+      var ahead = 0
+      var behind = 0
+      try GitError.check(apiName: "git_graph_ahead_behind", closure: {
+        git_graph_ahead_behind(&ahead, &behind, repositoryPointer, &headOID.oid, &otherOID.oid)
+      })
+      return (ahead: ahead, behind: behind)
+    }
   }
 
   private func commitMerge(revspec: String, annotatedCommit: OpaquePointer, signature: Signature) throws -> ObjectID {
