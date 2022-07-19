@@ -820,6 +820,12 @@ public final class Repository {
     }
   }
 
+  public func setHead(referenceName: String) throws {
+    try GitError.check(apiName: "git_repository_set_head", closure: {
+      git_repository_set_head(repositoryPointer, referenceName)
+    })
+  }
+
   /// The ``ObjectID`` for the current value of HEAD.
   public var headObjectID: ObjectID? {
     get throws {
@@ -1102,6 +1108,31 @@ public final class Repository {
       } catch {
         continuation.finish(throwing: error)
       }
+    }
+  }
+
+  public func allCommits(revspec: String) throws -> [Commit] {
+    var results: [Commit] = []
+    try enumerateCommits(revspec: revspec) { commit in
+      results.append(commit)
+      return true
+    }
+    return results
+  }
+
+  public func isCommitReachableFromAnyRemote(commit: Commit) throws -> Bool {
+    let remoteOids = try branches(type: .remote).compactMap { branchName -> git_oid? in
+      try lookupReference(name: branchName)?.commit.objectID.oid
+    }
+    var commitOid = commit.objectID.oid
+    let isReachable = git_graph_reachable_from_any(repositoryPointer, &commitOid, remoteOids, remoteOids.count)
+    switch isReachable {
+    case 1:
+      return true
+    case 0:
+      return false
+    default:
+      throw GitError(errorCode: isReachable, apiName: "git_graph_reachable_from_any")
     }
   }
 
