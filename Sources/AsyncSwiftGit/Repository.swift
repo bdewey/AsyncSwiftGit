@@ -562,7 +562,7 @@ public final class Repository {
     }
   }
 
-  private func countCommits(revspec: String) throws -> Int {
+  public func countCommits(revspec: String) throws -> Int {
     var count = 0
     try enumerateCommits(revspec: revspec) { _ in
       count += 1
