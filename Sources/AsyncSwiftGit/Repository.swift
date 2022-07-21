@@ -626,7 +626,10 @@ public final class Repository {
     defer {
       git_index_free(indexPointer)
     }
-    let headReference = try head
+    guard let headReference = try head else {
+      // TODO: Support merging into an unborn branch
+      throw GitError(errorCode: -9, apiName: "git_repository_head")
+    }
     let headCommit = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
       git_reference_peel(&pointer, headReference.referencePointer, GIT_OBJECT_COMMIT)
     })
@@ -775,7 +778,7 @@ public final class Repository {
   }
 
   private func fastForward(to objectID: ObjectID, isUnborn: Bool) throws {
-    let headReference = isUnborn ? try createSymbolicReference(named: "HEAD", targeting: objectID) : try head
+    let headReference = isUnborn ? try createSymbolicReference(named: "HEAD", targeting: objectID) : try head!
     let targetPointer = try GitError.checkAndReturn(apiName: "git_object_lookup", closure: { pointer in
       var oid = objectID.oid
       return git_object_lookup(&pointer, repositoryPointer, &oid, GIT_OBJECT_COMMIT)
@@ -811,12 +814,20 @@ public final class Repository {
     return Reference(pointer: targetReference)
   }
 
-  public var head: Reference {
+  /// Returns the reference that HEAD points to, or `nil` if HEAD points to an unborn branch.
+  public var head: Reference? {
     get throws {
-      let reference = try GitError.checkAndReturn(apiName: "git_repository_head", closure: { pointer in
-        git_repository_head(&pointer, repositoryPointer)
-      })
-      return Reference(pointer: reference)
+      do {
+        let reference = try GitError.checkAndReturn(apiName: "git_repository_head", closure: { pointer in
+          git_repository_head(&pointer, repositoryPointer)
+        })
+        return Reference(pointer: reference)
+      } catch let error as GitError {
+        if error.errorCode == GIT_EUNBORNBRANCH.rawValue {
+          return nil
+        }
+        throw error
+      }
     }
   }
 

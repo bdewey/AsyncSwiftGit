@@ -90,7 +90,7 @@ final class RepositoryTests: XCTestCase {
     try repository.add("local.txt")
     let commitTime = Date()
     try repository.commit(message: "Local commit", signature: Signature(name: "John Q. Tester", email: "tester@me.com", time: commitTime))
-    let timeFromRepo = try repository.head.commit.commitTime
+    let timeFromRepo = try repository.head!.commit.commitTime
     XCTAssertEqual(commitTime.timeIntervalSince1970, timeFromRepo.timeIntervalSince1970, accuracy: 1)
     try repository.addRemote("origin", url: URL(string: "https://github.com/bdewey/jubliant-happiness")!)
     try await repository.fetch(remote: "origin")

@@ -13,7 +13,7 @@ private extension Logger {
   }()
 }
 
-public enum PushProgress {
+public enum PushProgress: Equatable {
   case sideband(String)
   case push(current: Int, total: Int, bytes: Int)
 }

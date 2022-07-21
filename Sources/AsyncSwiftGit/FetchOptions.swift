@@ -4,7 +4,7 @@ import Clibgit2
 import Foundation
 
 /// A structure to report on fetching progress.
-public struct FetchProgress {
+public struct FetchProgress: Equatable {
   public let receivedObjects: Int
   public let indexedObjects: Int
   public let totalObjects: Int
