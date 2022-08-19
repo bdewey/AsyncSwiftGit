@@ -16,6 +16,25 @@ private extension Logger {
   }()
 }
 
+public protocol GitConflictResolver {
+  /// Resolve a conflict in the repository.
+  ///
+  /// Resolving a conflict requires, at minimum, removing the conflict entries from `index`. For example, ``Index/removeConflictEntries(for:)`` will remove
+  /// any conflicting entries.
+  ///
+  /// If the repository has a working directory, then there will be a _conflict file_ in the working directory that also needs to be cleaned up. Some strategies:
+  ///
+  /// - Explicitly write the resolved contents to that file in the working directory
+  /// - Return `requiresCheckout`, which will tell ``Repository/merge(revspec:resolver:signature:)`` to update the working directory to match the contents of the Index. This is the strategy to use if you fixed the Index by just picking the `ours` or `theirs` conflicting entry.
+  ///
+  /// - Parameters:
+  ///   - conflict: The conflicting index entries.
+  ///   - index: The repository index.
+  ///   - repository: The repository.
+  /// - Returns: A tuple indicating if the conflict was resolved, and if so, whether we need to check out the Index to update the working directory.
+  func resolveConflict(_ conflict: Index.ConflictEntry, index: Index, repository: Repository) throws -> (resolved: Bool, requiresCheckout: Bool)
+}
+
 /// A value that represents progress towards a goal.
 public enum Progress<ProgressType, ResultType> {
   /// Progress towards the goal, storing the progress value.
@@ -289,6 +308,7 @@ public final class Repository {
     return String(cString: buffer.ptr)
   }
 
+  /// A stream that emits ``FetchProgress`` structs during a fetch and concludes with the name of the default branch of the remote when the fetch is complete.
   public typealias FetchProgressStream = AsyncThrowingStream<Progress<FetchProgress, String?>, Error>
 
   /// Fetch from a named remote.
@@ -491,7 +511,11 @@ public final class Repository {
   }
 
   /// Merge a `revspec` into the current branch.
-  public func merge(revspec: String, signature signatureBlock: @autoclosure () throws -> Signature) throws -> MergeResult {
+  public func merge(
+    revspec: String,
+    resolver: GitConflictResolver? = nil,
+    signature signatureBlock: @autoclosure () throws -> Signature
+  ) throws -> MergeResult {
     try checkNormalState()
 
     let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
@@ -531,7 +555,7 @@ public final class Repository {
           git_merge(repositoryPointer, &theirHeads, theirHeads.count, &merge_options, &checkout_options)
         })
       }
-      try checkForConflicts()
+      try checkForConflicts(resolver: resolver)
       let signature = try signatureBlock()
       let mergeCommitOID = try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
       return .merge(mergeCommitOID)
@@ -600,14 +624,14 @@ public final class Repository {
     case (.none, .none):
       return (ahead: 0, behind: 0)
     case (.some, .none):
-      let commits = try sourceReference?.name.flatMap({ revspec in
+      let commits = try sourceReference?.name.flatMap { revspec in
         try countCommits(revspec: revspec)
-      }) ?? 0
+      } ?? 0
       return (ahead: commits, behind: 0)
     case (.none, .some):
-      let commits = try targetReference?.name.flatMap({ revspec in
+      let commits = try targetReference?.name.flatMap { revspec in
         try countCommits(revspec: revspec)
-      }) ?? 0
+      } ?? 0
       return (ahead: 0, behind: commits)
     case (.some(var headOID), .some(var otherOID)):
       var ahead = 0
@@ -738,21 +762,57 @@ public final class Repository {
     })
   }
 
-  /// Throws ``ConflictError`` if there are conflicts in the current repository.
-  public func checkForConflicts() throws {
-    // See if there were conflicts
-    let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
-      git_repository_index(&pointer, repositoryPointer)
-    })
-    defer {
-      git_index_free(indexPointer)
+  /// The index file for this repository.
+  public var index: Index {
+    get throws {
+      let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
+        git_repository_index(&pointer, repositoryPointer)
+      })
+      return Index(indexPointer)
     }
+  }
 
-    if git_index_has_conflicts(indexPointer) == 0 {
+  /// Throws ``ConflictError`` if there are conflicts in the current repository.
+  public func checkForConflicts(resolver: GitConflictResolver?) throws {
+    // See if there were conflicts
+    let index = try index
+
+    if !index.hasConflicts {
       // No conflicts
       return
     }
 
+    // Try to resolve any conflicts
+    var requiresCheckout = false
+    for conflict in index.conflicts {
+      if let result = try resolver?.resolveConflict(conflict, index: index, repository: self) {
+        requiresCheckout = result.requiresCheckout || requiresCheckout
+      }
+    }
+
+    // Make sure conflict resolution succeeded.
+
+    let conflictingPaths = index.conflicts.map(\.path)
+    if !conflictingPaths.isEmpty {
+      throw ConflictError(conflictingPaths: conflictingPaths)
+    }
+
+    if requiresCheckout {
+      // The resolver modified the index without modifying the working directory.
+      // Do a checkout to make sure the working directory is up-to-date.
+      let forceOptions = CheckoutOptions(checkoutStrategy: GIT_CHECKOUT_FORCE)
+      try forceOptions.withOptions { options in
+        try GitError.check(apiName: "git_checkout_index", closure: {
+          git_checkout_index(repositoryPointer, index.indexPointer, &options)
+        })
+      }
+    }
+  }
+
+  private func enumerateConflicts(
+    in indexPointer: OpaquePointer,
+    _ block: (_ ancestor: git_index_entry?, _ ours: git_index_entry?, _ theirs: git_index_entry?) throws -> Void
+  ) throws {
     let iteratorPointer = try GitError.checkAndReturn(apiName: "git_index_conflict_iterator_new", closure: { pointer in
       git_index_conflict_iterator_new(&pointer, indexPointer)
     })
@@ -764,17 +824,9 @@ public final class Repository {
     var ours: UnsafePointer<git_index_entry>?
     var theirs: UnsafePointer<git_index_entry>?
 
-    var conflictingPaths: [String] = []
-
     while git_index_conflict_next(&ancestor, &ours, &theirs, iteratorPointer) == 0 {
-      guard let pathChars = ours?.pointee.path ?? theirs?.pointee.path ?? ancestor?.pointee.path else {
-        continue
-      }
-      let path = String(cString: pathChars)
-      conflictingPaths.append(path)
+      try block(ancestor?.pointee, ours?.pointee, theirs?.pointee)
     }
-
-    throw ConflictError(conflictingPaths: conflictingPaths)
   }
 
   private func fastForward(to objectID: ObjectID, isUnborn: Bool) throws {
@@ -932,6 +984,20 @@ public final class Repository {
     return data
   }
 
+  // TODO: Refactor shared code with the TreeEntry version
+  public func lookupBlob(for entry: git_index_entry) throws -> Data {
+    let blobPointer = try GitError.checkAndReturn(apiName: "git_blob_lookup", closure: { pointer in
+      var oid = entry.id
+      return git_blob_lookup(&pointer, repositoryPointer, &oid)
+    })
+    defer {
+      git_blob_free(blobPointer)
+    }
+    let size = git_blob_rawsize(blobPointer)
+    let data = Data(bytes: git_blob_rawcontent(blobPointer), count: Int(size))
+    return data
+  }
+
   public func lookupCommit(for id: ObjectID) throws -> Commit {
     var objectID = id.oid
     let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
@@ -1033,6 +1099,12 @@ public final class Repository {
     })
   }
 
+  /// Pushes refspecs to a remote, returning an `AsyncThrowingStream` that you can use to track progress.
+  /// - Parameters:
+  ///   - remoteName: The remote to push to.
+  ///   - refspecs: The references to push.
+  ///   - credentials: The credentials to use for connect to the remote.
+  /// - Returns: An `AsyncThrowingStream` that emits ``PushProgress`` structs for tracking progress.
   public func pushProgress(remoteName: String, refspecs: [String], credentials: Credentials = .default) -> AsyncThrowingStream<PushProgress, Error> {
     let pushOptions = PushOptions(credentials: credentials)
     let stream = AsyncThrowingStream<PushProgress, Error> { continuation in

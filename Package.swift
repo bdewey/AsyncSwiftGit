@@ -28,7 +28,7 @@ let package = Package(
         .product(name: "Logging", package: "swift-log"),
       ],
       swiftSettings: [
-        .unsafeFlags(["-warnings-as-errors"]),
+        //        .unsafeFlags(["-warnings-as-errors"]),
       ]
     ),
     .target(name: "Initializer", dependencies: ["static-libgit2"]),
@@ -36,7 +36,7 @@ let package = Package(
       name: "AsyncSwiftGitTests",
       dependencies: ["AsyncSwiftGit"],
       swiftSettings: [
-        .unsafeFlags(["-warnings-as-errors"]),
+        //        .unsafeFlags(["-warnings-as-errors"]),
       ]
     ),
   ]
