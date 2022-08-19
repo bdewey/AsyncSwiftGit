@@ -3,7 +3,13 @@
 import Clibgit2
 import Foundation
 
+/// A status entry, providing the differences between the file as it exists in HEAD and the index, and providing the differences between the index and the working directory.
 public struct StatusEntry: Hashable {
+  /// Status flags for a single file.
+  ///
+  /// A combination of these values will be returned to indicate the status of a file. Status compares the working directory, the index, and the current HEAD of the repository.
+  /// The `GIT_STATUS_INDEX` set of flags represents the status of file in the index relative to the HEAD, and the `GIT_STATUS_WT` set of flags represent the status
+  /// of the file in the working directory relative to the index.
   public struct Status: RawRepresentable, OptionSet, Hashable {
     public var rawValue: Int
 
@@ -33,10 +39,17 @@ public struct StatusEntry: Hashable {
     public static let conflicted = Status(rawValue: 1 << 15)
   }
 
+  /// Represents names used for an entry in a pair of locations in the repository.
+  ///
+  /// Example locations include `HEAD` (what's been committed), ``Index`` (what is staged to be committed), and the working directory.
   public enum PathPair: Hashable {
+    /// The entry has different paths in the different locations.
     case renamed(oldPath: String, newPath: String)
+
+    /// The entry has the same path in both repository locations.
     case constant(path: String)
 
+    /// True if this `PathPair` represents a rename.
     public var isRenamed: Bool {
       switch self {
       case .renamed:
@@ -84,8 +97,13 @@ public struct StatusEntry: Hashable {
     }
   }
 
+  /// Detailed information about the differences between the file in HEAD and the file in the index.
   public var headToIndexPath: PathPair?
+
+  /// Detailed information about the differences between the file in the index and the file in the working directory.
   public var indexToWorkdirPath: PathPair?
+
+  /// Status flags for the file.
   public var status: Status
 
   public init?(_ gitStatusEntry: git_status_entry) {
@@ -101,6 +119,7 @@ public struct StatusEntry: Hashable {
     }
   }
 
+  /// The path for this entry.
   public var path: String {
     let returnValue = headToIndexPath?.newPath ?? indexToWorkdirPath?.newPath
     return returnValue!

@@ -3,6 +3,9 @@
 import Clibgit2
 import Foundation
 
+/// A snapshot of the contents of a single directory stored in a ``Repository``.
+///
+/// A `Tree` is a random-access collection of ``TreeEntry`` structs.
 public final class Tree {
   init(_ treePointer: OpaquePointer) {
     self.treePointer = treePointer
@@ -16,6 +19,7 @@ public final class Tree {
   let treePointer: OpaquePointer
   let entryCount: Int
 
+  /// Retrieve a tree entry contained in a tree or in any of its subtrees, given its relative path.
   public subscript(path path: String) -> TreeEntry? {
     do {
       let entryPointer = try GitError.checkAndReturn(apiName: "git_tree_entry_bypath", closure: { pointer in
@@ -31,7 +35,7 @@ public final class Tree {
   }
 }
 
-extension Tree: BidirectionalCollection {
+extension Tree: RandomAccessCollection {
   public var startIndex: Int { 0 }
   public var endIndex: Int { entryCount }
   public func index(after i: Int) -> Int { i + 1 }

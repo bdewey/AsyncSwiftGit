@@ -25,13 +25,21 @@ public struct FetchProgress: Equatable {
   }
 }
 
+public enum FetchPruneOption {
+  case unspecified
+  case prune
+  case noPrune
+}
+
 final class FetchOptions: CustomStringConvertible {
-  init(credentials: Credentials = .default, progressCallback: Repository.FetchProgressBlock? = nil) {
+  init(credentials: Credentials = .default, pruneOption: FetchPruneOption = .unspecified, progressCallback: Repository.FetchProgressBlock? = nil) {
     self.credentials = credentials
+    self.pruneOption = pruneOption
     self.progressCallback = progressCallback
   }
 
   var credentials: Credentials
+  var pruneOption: FetchPruneOption
   var progressCallback: Repository.FetchProgressBlock?
 
   var description: String {
@@ -49,6 +57,14 @@ final class FetchOptions: CustomStringConvertible {
   func withOptions<T>(closure: (inout git_fetch_options) throws -> T) rethrows -> T {
     var options = git_fetch_options()
     git_fetch_options_init(&options, UInt32(GIT_FETCH_OPTIONS_VERSION))
+    switch pruneOption {
+    case .unspecified:
+      options.prune = GIT_FETCH_PRUNE_UNSPECIFIED
+    case .prune:
+      options.prune = GIT_FETCH_PRUNE
+    case .noPrune:
+      options.prune = GIT_FETCH_NO_PRUNE
+    }
     if progressCallback != nil {
       options.callbacks.transfer_progress = fetchProgress
     }

@@ -5,6 +5,10 @@ import Foundation
 
 /// Contains the properties of a `git_tree_entry`
 public struct TreeEntry: Hashable {
+  /// Initializer.
+  /// - Parameters:
+  ///   - entry: The `git_tree_entry` containing the relevant properties.
+  ///   - root: An optional path to the containing ``Tree`` for this entry.
   init(_ entry: OpaquePointer, root: String? = nil) {
     self.objectID = ObjectID(git_tree_entry_id(entry)!.pointee)
     let entryName = String(validatingUTF8: git_tree_entry_name(entry))

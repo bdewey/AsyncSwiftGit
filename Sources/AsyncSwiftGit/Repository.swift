@@ -316,8 +316,12 @@ public final class Repository {
   ///   - remote: The remote to fetch
   ///   - credentials: Credentials to use for the fetch.
   /// - returns: An AsyncThrowingStream that emits the fetch progress. The fetch is not done until this stream finishes yielding values.
-  public func fetchProgress(remote: String, credentials: Credentials = .default) -> FetchProgressStream {
-    let fetchOptions = FetchOptions(credentials: credentials, progressCallback: nil)
+  public func fetchProgress(
+    remote: String,
+    pruneOption: FetchPruneOption = .unspecified,
+    credentials: Credentials = .default
+  ) -> FetchProgressStream {
+    let fetchOptions = FetchOptions(credentials: credentials, pruneOption: pruneOption, progressCallback: nil)
     let resultStream = FetchProgressStream { continuation in
       Task {
         fetchOptions.progressCallback = { progressResult in
@@ -462,6 +466,7 @@ public final class Repository {
     for try await _ in checkoutProgress(referenceShorthand: revspec, checkoutStrategy: checkoutStrategy) {}
   }
 
+  /// The current set of ``StatusEntry`` structs that represent the current status of all items in the repository.
   public var statusEntries: [StatusEntry] {
     get throws {
       var options = git_status_options()
