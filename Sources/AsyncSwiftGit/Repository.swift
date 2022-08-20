@@ -262,6 +262,42 @@ public final class Repository {
     }
   }
 
+  @discardableResult
+  /// Deletes the branch named `name`.
+  ///
+  /// - note: Unlike the `git branch --delete` command, this method does not check to see if the branch has been merged before deleting; it just deletes.
+  ///
+  /// - Parameter name: The name of the branch to delete.
+  /// - returns The ``ObjectID`` of the commit that the branch pointed to, or nil if no branch named `name` was found.
+  /// - throws ``GitError`` on any other error.
+  public func deleteBranch(named name: String) throws -> ObjectID? {
+    do {
+      let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_lookup", closure: { pointer in
+        git_branch_lookup(&pointer, repositoryPointer, name, BranchType.all.gitType)
+      })
+      defer {
+        git_reference_free(branchPointer)
+      }
+      let commitPointer = try GitError.checkAndReturn(apiName: "git_reference_peel", closure: { pointer in
+        git_reference_peel(&pointer, branchPointer, GIT_OBJECT_COMMIT)
+      })
+      defer {
+        git_object_free(commitPointer)
+      }
+      let oid = git_commit_id(commitPointer)
+      try GitError.check(apiName: "git_branch_delete", closure: {
+        git_branch_delete(branchPointer)
+      })
+      return ObjectID(oid)
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return nil
+      } else {
+        throw error
+      }
+    }
+  }
+
   /// Gets all branch names of a specific branch type.
   /// - Parameter type: The type of branch to query for.
   /// - Returns: The current branch names in the repository.
@@ -339,7 +375,7 @@ public final class Repository {
 
   /// Lookup a reference by name in a repository.
   ///
-  /// - Parameter name: The name of the reference.
+  /// - Parameter name: The name of the reference. This needs to be the _full name_ of the reference (e.g., `refs/heads/main` instead of `main`).
   /// - Returns: The corresponding ``Reference`` if it exists, or `nil` if a reference named `name` is not found in the repository.
   public func lookupReference(name: String) throws -> Reference? {
     do {
@@ -435,6 +471,11 @@ public final class Repository {
     return defaultBranch
   }
 
+  /// Creates an `AsyncThrowingStream` that reports on the progress of checking out a reference.
+  /// - Parameters:
+  ///   - referenceShorthand: The reference to checkout. This can be a shorthand name (e.g., `main`) and git will resolve it using precedence rules to a full reference (`refs/heads/main`).
+  ///   - checkoutStrategy: The checkout strategy.
+  /// - Returns: An `AsyncThrowingStream` that emits ``CheckoutProgress`` structs reporting on the progress of checkout. Checkout is complete when the stream terminates.
   public func checkoutProgress(
     referenceShorthand: String,
     checkoutStrategy: git_checkout_strategy_t = GIT_CHECKOUT_SAFE

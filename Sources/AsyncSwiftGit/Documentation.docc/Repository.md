@@ -19,6 +19,7 @@
 
 - ``createBranch(named:commitOID:force:)``
 - ``createBranch(named:target:force:setTargetAsUpstream:)``
+- ``deleteBranch(named:)``
 - ``branches(type:)``
 - ``remoteName(branchName:)``
 - ``branchExists(named:)``
