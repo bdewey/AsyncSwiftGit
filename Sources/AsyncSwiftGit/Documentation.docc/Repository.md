@@ -9,7 +9,13 @@
 - ``clone(from:to:credentials:)``
 - ``cloneProgress(from:to:credentials:)``
 
-### Working with branches
+### Remotes
+
+- ``addRemote(_:url:)``
+- ``deleteRemote(_:)``
+- ``remoteURL(for:)``
+
+### Branches
 
 - ``createBranch(named:commitOID:force:)``
 - ``createBranch(named:target:force:setTargetAsUpstream:)``
@@ -17,3 +23,7 @@
 - ``remoteName(branchName:)``
 - ``branchExists(named:)``
 - ``upstreamName(of:)``
+
+### References
+
+- ``lookupReference(name:)``

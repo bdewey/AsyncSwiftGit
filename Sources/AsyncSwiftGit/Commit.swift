@@ -15,16 +15,21 @@ public final class Commit {
     git_commit_free(commit)
   }
 
+  /// The time of the commit.
   public var commitTime: Date {
     let git_time = git_commit_time(commit)
     return Date(timeIntervalSince1970: TimeInterval(git_time))
   }
 
+  /// The ``ObjectID`` for the commit entry in the repository.
   public var objectID: ObjectID {
     let oid = git_commit_id(commit)
     return ObjectID(oid)!
   }
 
+  /// The short “summary” of the git commit message.
+  ///
+  /// The returned message is the summary of the commit, comprising the first paragraph of the message with whitespace trimmed and squashed.
   public var summary: String {
     if let result = git_commit_summary(commit) {
       return String(cString: result)
@@ -33,6 +38,7 @@ public final class Commit {
     }
   }
 
+  /// The tree pointed to by a commit.
   public var tree: Tree {
     get throws {
       let treePointer = try GitError.checkAndReturn(apiName: "git_commit_tree", closure: { pointer in
@@ -42,6 +48,7 @@ public final class Commit {
     }
   }
 
+  /// The parents of this commit.
   public var parents: [Commit] {
     (0 ..< git_commit_parentcount(commit)).map { i in
       var parentCommitPointer: OpaquePointer?
@@ -50,6 +57,7 @@ public final class Commit {
     }
   }
 
+  /// The set of all paths changed by this commit.
   public var changedPaths: Set<String> {
     get throws {
       let repository = Repository(repositoryPointer: git_commit_owner(commit), isOwner: false)

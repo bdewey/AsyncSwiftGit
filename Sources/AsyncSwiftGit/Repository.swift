@@ -163,7 +163,30 @@ public final class Repository {
     }
   }
 
+  // MARK: - Remotes
+
+  /// Adds a named remote to the repo.
+  /// - Parameters:
+  ///   - name: The name of the remote. (E.g., `origin`)
+  ///   - url: The URL for the remote.
+  public func addRemote(_ name: String, url: URL) throws {
+    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_create", closure: { pointer in
+      git_remote_create(&pointer, repositoryPointer, name, url.absoluteString)
+    })
+    git_remote_free(remotePointer)
+  }
+
+  /// Deletes the named remote from the repository.
+  public func deleteRemote(_ name: String) throws {
+    try GitError.check(apiName: "git_remote_delete", closure: {
+      git_remote_delete(repositoryPointer, name)
+    })
+  }
+
   /// Returns the URL associated with a particular git remote name.
+  /// - Parameter remoteName: The name of the remote. (For example, `origin`)
+  /// - Returns: If `remoteName` exists, the URL corresponding to the remote. Returns `nil` if `remoteName` does not exist.
+  /// - throws: ``GitError`` on any other error.
   public func remoteURL(for remoteName: String) throws -> URL? {
     do {
       let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_lookup", closure: { pointer in
@@ -183,35 +206,6 @@ public final class Repository {
       } else {
         throw gitError
       }
-    }
-  }
-
-  /// Adds a named remote to the repo.
-  public func addRemote(_ name: String, url: URL) throws {
-    let remotePointer = try GitError.checkAndReturn(apiName: "git_remote_create", closure: { pointer in
-      git_remote_create(&pointer, repositoryPointer, name, url.absoluteString)
-    })
-    git_remote_free(remotePointer)
-  }
-
-  /// Deletes the named remote from the repository.
-  public func deleteRemote(_ name: String) throws {
-    try GitError.check(apiName: "git_remote_delete", closure: {
-      git_remote_delete(repositoryPointer, name)
-    })
-  }
-
-  public func lookupReference(name: String) throws -> Reference? {
-    do {
-      let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
-        git_reference_lookup(&pointer, repositoryPointer, name)
-      })
-      return Reference(pointer: referencePointer)
-    } catch let error as GitError {
-      if error.errorCode == GIT_ENOTFOUND.rawValue {
-        return nil
-      }
-      throw error
     }
   }
 
@@ -339,6 +333,26 @@ public final class Repository {
       git_buf_dispose(&buffer)
     }
     return String(cString: buffer.ptr)
+  }
+
+  // MARK: - References
+
+  /// Lookup a reference by name in a repository.
+  ///
+  /// - Parameter name: The name of the reference.
+  /// - Returns: The corresponding ``Reference`` if it exists, or `nil` if a reference named `name` is not found in the repository.
+  public func lookupReference(name: String) throws -> Reference? {
+    do {
+      let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
+        git_reference_lookup(&pointer, repositoryPointer, name)
+      })
+      return Reference(pointer: referencePointer)
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return nil
+      }
+      throw error
+    }
   }
 
   /// A stream that emits ``FetchProgress`` structs during a fetch and concludes with the name of the default branch of the remote when the fetch is complete.
