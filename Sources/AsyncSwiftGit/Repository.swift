@@ -44,7 +44,9 @@ public enum Progress<ProgressType, ResultType> {
   case completed(ResultType)
 }
 
-/// A Git repository.
+/// Representation of a git repository, including all its object contents.
+///
+/// - note: This class is not thread-safe. Do not use it from more than one thread at the same time.
 public final class Repository {
   typealias FetchProgressBlock = (FetchProgress) -> Void
   typealias CloneProgressBlock = (Result<Double, Error>) -> Void
@@ -107,6 +109,12 @@ public final class Repository {
     }
   }
 
+  /// Clones a repository.
+  /// - Parameters:
+  ///   - remoteURL: The URL to the repository to clone.
+  ///   - localURL: The URL of the local destination for the repository.
+  ///   - credentials: Credentials to use to connect to `remoteURL`
+  /// - Returns: A ``Repository`` representing the new local copy.
   public static func clone(
     from remoteURL: URL,
     to localURL: URL,
@@ -193,29 +201,6 @@ public final class Repository {
     })
   }
 
-  public func branches(type: BranchType) throws -> [String] {
-    let branchIterator = try GitError.checkAndReturn(apiName: "git_branch_iterator_new", closure: { pointer in
-      git_branch_iterator_new(&pointer, repositoryPointer, type.gitType)
-    })
-    defer {
-      git_branch_iterator_free(branchIterator)
-    }
-    var referencePointer: OpaquePointer?
-    var type = GIT_BRANCH_ALL
-    var result = git_branch_next(&referencePointer, &type, branchIterator)
-    var branches: [String] = []
-    while result == GIT_OK.rawValue {
-      let branchName = String(cString: git_reference_name(referencePointer))
-      branches.append(branchName)
-      result = git_branch_next(&referencePointer, &type, branchIterator)
-    }
-    if result == GIT_ITEROVER.rawValue {
-      return branches
-    } else {
-      throw GitError(errorCode: result, apiName: "git_branch_next")
-    }
-  }
-
   public func lookupReference(name: String) throws -> Reference? {
     do {
       let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_lookup", closure: { pointer in
@@ -230,33 +215,33 @@ public final class Repository {
     }
   }
 
-  /// Returns the remote name for a remote tracking branch.
-  /// - Parameter branchName: The full branch name
-  /// - Returns: The remote name
-  public func remoteName(branchName: String) throws -> String {
-    var buffer = git_buf()
-    try GitError.check(apiName: "git_branch_remote_name", closure: {
-      git_branch_remote_name(&buffer, repositoryPointer, branchName)
+  // MARK: - Branches
+
+  /// Creates a branch targeting a specific commit.
+  /// - Parameters:
+  ///   - name: The name of the branch to create.
+  ///   - commitOID: The ``ObjectID`` of the commit to target.
+  ///   - force: If true, force create the branch. If false, this operation will fail if a branch named `name` already exists.
+  public func createBranch(named name: String, commitOID: ObjectID, force: Bool = false) throws {
+    var oid = commitOID.oid
+    let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
+      git_commit_lookup(&pointer, repositoryPointer, &oid)
     })
-    return String(cString: buffer.ptr)
-  }
-
-  public func branchExists(named name: String) throws -> Bool {
-    do {
-      let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_lookup", closure: { pointer in
-        git_branch_lookup(&pointer, repositoryPointer, name, GIT_BRANCH_LOCAL)
-      })
-      git_reference_free(branchPointer)
-      return true
-    } catch let error as GitError {
-      if error.errorCode == GIT_ENOTFOUND.rawValue {
-        return false
-      } else {
-        throw error
-      }
+    defer {
+      git_object_free(commitPointer)
     }
+    let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create", closure: { pointer in
+      git_branch_create(&pointer, repositoryPointer, name, commitPointer, force ? 1 : 0)
+    })
+    git_reference_free(branchPointer)
   }
 
+  /// Creates a branch targeting a named reference.
+  /// - Parameters:
+  ///   - name: The name of the branch to create.
+  ///   - target: The name of the reference to target.
+  ///   - force: If true, force create the branch. If false, this operation will fail if a branch named `name` already exists.
+  ///   - setTargetAsUpstream: If true, set `target` as the upstream branch of the newly created branch.
   public func createBranch(named name: String, target: String, force: Bool = false, setTargetAsUpstream: Bool = false) throws {
     let referencePointer = try GitError.checkAndReturn(apiName: "git_reference_dwim", closure: { pointer in
       git_reference_dwim(&pointer, repositoryPointer, target)
@@ -283,20 +268,68 @@ public final class Repository {
     }
   }
 
-  public func createBranch(named name: String, commitOID: ObjectID, force: Bool = false) throws {
-    var oid = commitOID.oid
-    let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
-      git_commit_lookup(&pointer, repositoryPointer, &oid)
+  /// Gets all branch names of a specific branch type.
+  /// - Parameter type: The type of branch to query for.
+  /// - Returns: The current branch names in the repository.
+  public func branches(type: BranchType) throws -> [String] {
+    let branchIterator = try GitError.checkAndReturn(apiName: "git_branch_iterator_new", closure: { pointer in
+      git_branch_iterator_new(&pointer, repositoryPointer, type.gitType)
     })
     defer {
-      git_object_free(commitPointer)
+      git_branch_iterator_free(branchIterator)
     }
-    let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_create", closure: { pointer in
-      git_branch_create(&pointer, repositoryPointer, name, commitPointer, force ? 1 : 0)
-    })
-    git_reference_free(branchPointer)
+    var referencePointer: OpaquePointer?
+    var type = GIT_BRANCH_ALL
+    var result = git_branch_next(&referencePointer, &type, branchIterator)
+    var branches: [String] = []
+    while result == GIT_OK.rawValue {
+      let branchName = String(cString: git_reference_name(referencePointer))
+      branches.append(branchName)
+      result = git_branch_next(&referencePointer, &type, branchIterator)
+    }
+    if result == GIT_ITEROVER.rawValue {
+      return branches
+    } else {
+      throw GitError(errorCode: result, apiName: "git_branch_next")
+    }
   }
 
+  /// Returns the remote name for a remote tracking branch.
+  /// - Parameter branchName: The full branch name
+  /// - Returns: The remote name
+  public func remoteName(branchName: String) throws -> String {
+    var buffer = git_buf()
+    try GitError.check(apiName: "git_branch_remote_name", closure: {
+      git_branch_remote_name(&buffer, repositoryPointer, branchName)
+    })
+    return String(cString: buffer.ptr)
+  }
+
+  /// Tests if a branch exists in the repository.
+  /// - Parameter name: The name of the branch.
+  /// - Returns: True if the branch exists, false otherwise.
+  public func branchExists(named name: String) throws -> Bool {
+    do {
+      let branchPointer = try GitError.checkAndReturn(apiName: "git_branch_lookup", closure: { pointer in
+        git_branch_lookup(&pointer, repositoryPointer, name, GIT_BRANCH_LOCAL)
+      })
+      git_reference_free(branchPointer)
+      return true
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return false
+      } else {
+        throw error
+      }
+    }
+  }
+
+  /// Get the upstream name of a branch.
+  ///
+  /// Given a local branch, this will return its remote-tracking branch information, as a full reference name, ie. “feature/nice” would become “refs/remote/origin/feature/nice”, depending on that branch’s configuration.
+  /// - Parameter branchName: The name of the branch to query.
+  /// - Returns: The upstream name of the branch, if it exists.
+  /// - throws ``GitError`` if there is no upstream branch.
   public func upstreamName(of branchName: String) throws -> String {
     var buffer = git_buf()
     try GitError.check(apiName: "git_branch_upstream_name", closure: {

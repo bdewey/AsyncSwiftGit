@@ -46,7 +46,7 @@ public struct GitConnectionSettings: Codable, Equatable {
   /// The username to use for recording all transactions.
   public var username = ""
 
-  /// The email to use for recording all transactions. This will also be used in the "username" field when connecting to ``remoteURL``.
+  /// The email to use for recording all transactions. This will also be used in the "username" field when connecting to ``remoteURLString``.
   public var email = ""
 
   /// If true, we expect to only have read-only credentials. Don't try to push changes and don't allow transaction edits.
