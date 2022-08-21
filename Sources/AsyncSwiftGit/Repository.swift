@@ -391,6 +391,22 @@ public final class Repository {
     }
   }
 
+  /// Lookup a reference by name and resolve immediately to an ``ObjectID``.
+  /// - Parameter referenceLongName: The long name for the reference (e.g. HEAD, refs/heads/master, refs/tags/v0.1.0, ...)
+  /// - Returns: The object ID for the reference.
+  public func lookupReferenceID(referenceLongName: String) throws -> ObjectID? {
+    do {
+      return try GitError.checkAndReturnOID(apiName: "git_reference_name_to_id", closure: { oid in
+        git_reference_name_to_id(&oid, repositoryPointer, referenceLongName)
+      })
+    } catch let error as GitError {
+      if error.errorCode == GIT_ENOTFOUND.rawValue {
+        return nil
+      }
+      throw error
+    }
+  }
+
   /// A stream that emits ``FetchProgress`` structs during a fetch and concludes with the name of the default branch of the remote when the fetch is complete.
   public typealias FetchProgressStream = AsyncThrowingStream<Progress<FetchProgress, String?>, Error>
 
@@ -603,16 +619,22 @@ public final class Repository {
     }
   }
 
-  /// Merge a `revspec` into the current branch.
+  /// Merge a revision into the current branch.
+  /// - Parameters:
+  ///   - revisionSpecification: The revision to merge. See `man gitrevisions` for details on the syntax.
+  ///   - resolver: A ``GitConflictResolver`` to resolve any merge conflicts.
+  ///   - signatureBlock: A block that returns a ``Signature`` for the resulting merge commit.
+  /// - Returns: A ``MergeResult`` describing the outcome of the merge.
+  /// - throws ``GitError`` if the merge could not complete without conflicts.
   public func merge(
-    revspec: String,
+    revisionSpecification: String,
     resolver: GitConflictResolver? = nil,
     signature signatureBlock: @autoclosure () throws -> Signature
   ) throws -> MergeResult {
     try checkNormalState()
 
     let annotatedCommit = try GitError.checkAndReturn(apiName: "git_annotated_commit_from_revspec", closure: { pointer in
-      git_annotated_commit_from_revspec(&pointer, repositoryPointer, revspec)
+      git_annotated_commit_from_revspec(&pointer, repositoryPointer, revisionSpecification)
     })
     defer {
       git_annotated_commit_free(annotatedCommit)
@@ -650,7 +672,7 @@ public final class Repository {
       }
       try checkForConflicts(resolver: resolver)
       let signature = try signatureBlock()
-      let mergeCommitOID = try commitMerge(revspec: revspec, annotatedCommit: annotatedCommit, signature: signature)
+      let mergeCommitOID = try commitMerge(revspec: revisionSpecification, annotatedCommit: annotatedCommit, signature: signature)
       return .merge(mergeCommitOID)
     }
 
@@ -681,7 +703,7 @@ public final class Repository {
 
   public func countCommits(revspec: String) throws -> Int {
     var count = 0
-    try enumerateCommits(revspec: revspec) { _ in
+    try enumerateCommits(referenceShorthand: revspec) { _ in
       count += 1
       return true
     }
@@ -1237,7 +1259,11 @@ public final class Repository {
     for try await _ in pushProgress(remoteName: remoteName, refspecs: refspecs, credentials: credentials) {}
   }
 
-  public func enumerateCommits(revspec: String, callback: (Commit) -> Bool) throws {
+  /// Enumerates the commits for a reference.
+  /// - Parameters:
+  ///   - referenceShorthand: The shorthand name of the reference to enumerate.
+  ///   - callback: A callback that receives each commit. Return `false` to stop enumerating commits.
+  public func enumerateCommits(referenceShorthand: String, callback: (Commit) -> Bool) throws {
     // TODO: Per the documentation, we should reuse this walker.
     let revwalkPointer = try GitError.checkAndReturn(apiName: "git_revwalk_new", closure: { pointer in
       git_revwalk_new(&pointer, repositoryPointer)
@@ -1246,7 +1272,7 @@ public final class Repository {
       git_revwalk_free(revwalkPointer)
     }
     let commitPointer = try GitError.checkAndReturn(apiName: "git_revparse_single", closure: { commitPointer in
-      git_revparse_single(&commitPointer, repositoryPointer, revspec)
+      git_revparse_single(&commitPointer, repositoryPointer, referenceShorthand)
     })
     defer {
       git_commit_free(commitPointer)
@@ -1276,7 +1302,7 @@ public final class Repository {
   public func log(revspec: String) -> AsyncThrowingStream<Commit, Error> {
     AsyncThrowingStream { continuation in
       do {
-        try enumerateCommits(revspec: revspec) { commit in
+        try enumerateCommits(referenceShorthand: revspec) { commit in
           continuation.yield(commit)
           return true
         }
@@ -1289,7 +1315,7 @@ public final class Repository {
 
   public func allCommits(revspec: String) throws -> [Commit] {
     var results: [Commit] = []
-    try enumerateCommits(revspec: revspec) { commit in
+    try enumerateCommits(referenceShorthand: revspec) { commit in
       results.append(commit)
       return true
     }
@@ -1300,8 +1326,17 @@ public final class Repository {
     let remoteOids = try branches(type: .remote).compactMap { branchName -> git_oid? in
       try lookupReference(name: branchName)?.commit.objectID.oid
     }
+    return try isCommit(commit, reachableFrom: remoteOids)
+  }
+
+  public func isCommit(_ commit: Commit, reachableFrom objectIDs: [ObjectID]) throws -> Bool {
+    let oids = objectIDs.map { $0.oid }
+    return try isCommit(commit, reachableFrom: oids)
+  }
+
+  private func isCommit(_ commit: Commit, reachableFrom oids: [git_oid]) throws -> Bool {
     var commitOid = commit.objectID.oid
-    let isReachable = git_graph_reachable_from_any(repositoryPointer, &commitOid, remoteOids, remoteOids.count)
+    let isReachable = git_graph_reachable_from_any(repositoryPointer, &commitOid, oids, oids.count)
     switch isReachable {
     case 1:
       return true

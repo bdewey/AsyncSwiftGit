@@ -50,7 +50,7 @@ final class RepositoryTests: XCTestCase {
     for try await progress in progressStream {
       print("Fetch progress: \(progress)")
     }
-    let result = try repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let result = try repository.merge(revisionSpecification: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isFastForward)
     let (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(ahead, 0)
@@ -97,7 +97,7 @@ final class RepositoryTests: XCTestCase {
     var (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
     XCTAssertEqual(ahead, 1)
     XCTAssertEqual(behind, 1)
-    let result = try repository.merge(revspec: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
+    let result = try repository.merge(revisionSpecification: "origin/main", signature: Signature(name: "John Q. Tester", email: "tester@me.com"))
     XCTAssertTrue(result.isMerge)
     try repository.checkNormalState()
     (ahead, behind) = try repository.commitsAheadBehind(other: "origin/main")
@@ -236,7 +236,7 @@ final class RepositoryTests: XCTestCase {
     XCTAssertEqual(fetchedTuple.ahead, 0)
     XCTAssertEqual(fetchedTuple.behind, 2)
 
-    let mergeResult = try clientRepository.merge(revspec: "origin/main", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
+    let mergeResult = try clientRepository.merge(revisionSpecification: "origin/main", signature: Signature(name: "bkd", email: "noone@foo.com", time: Date()))
     XCTAssertTrue(mergeResult.isFastForward)
 
     let nothingOnServer = try clientRepository.commitsAheadBehind(other: "fake")

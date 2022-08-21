@@ -38,6 +38,17 @@ public final class Commit {
     }
   }
 
+  /// The full message of a commit.
+  ///
+  /// The returned message will be slightly prettified by removing any potential leading newlines.
+  public var message: String {
+    if let result = git_commit_message(commit) {
+      return String(cString: result)
+    } else {
+      return ""
+    }
+  }
+
   /// The tree pointed to by a commit.
   public var tree: Tree {
     get throws {
