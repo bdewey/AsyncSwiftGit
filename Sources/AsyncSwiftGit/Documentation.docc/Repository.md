@@ -29,3 +29,8 @@
 
 - ``lookupReference(name:)``
 - ``lookupReferenceID(referenceLongName:)``
+
+### Loading data
+
+- ``data(for:)``
+- ``addData(_:path:)``

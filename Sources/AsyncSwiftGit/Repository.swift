@@ -407,6 +407,50 @@ public final class Repository {
     }
   }
 
+  // MARK: - Managing Data
+
+  /// Loads the data associated with an object ID.
+  /// - Parameter objectID: The object ID to load.
+  /// - Returns: The data associated with the object ID.
+  public func data(for objectID: ObjectID) throws -> Data {
+    let blobPointer = try GitError.checkAndReturn(apiName: "git_blob_lookup", closure: { pointer in
+      var oid = objectID.oid
+      return git_blob_lookup(&pointer, repositoryPointer, &oid)
+    })
+    defer {
+      git_blob_free(blobPointer)
+    }
+    let size = git_blob_rawsize(blobPointer)
+    let data = Data(bytes: git_blob_rawcontent(blobPointer), count: Int(size))
+    return data
+  }
+
+  /// Adds data to the repository and creates an index entry for it.
+  /// - parameter data: The data to add.
+  /// - parameter path: The path for the index entry.
+  public func addData(_ data: Data, path: String) throws {
+    try path.withCString { pathPointer in
+      var indexEntry = git_index_entry()
+      indexEntry.path = pathPointer
+      let now = Date()
+      let indexTime = git_index_time(seconds: Int32(now.timeIntervalSince1970), nanoseconds: 0)
+      indexEntry.ctime = indexTime
+      indexEntry.mtime = indexTime
+      indexEntry.mode = 0o100644
+      let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
+        git_repository_index(&pointer, repositoryPointer)
+      })
+      defer {
+        git_index_free(indexPointer)
+      }
+      try data.withUnsafeBytes { bufferPointer in
+        try GitError.check(apiName: "git_index_add_from_buffer", closure: {
+          git_index_add_from_buffer(indexPointer, &indexEntry, bufferPointer.baseAddress, data.count)
+        })
+      }
+    }
+  }
+
   /// A stream that emits ``FetchProgress`` structs during a fetch and concludes with the name of the default branch of the remote when the fetch is complete.
   public typealias FetchProgressStream = AsyncThrowingStream<Progress<FetchProgress, String?>, Error>
 
@@ -1086,33 +1130,6 @@ public final class Repository {
     }
   }
 
-  public func lookupBlob(for entry: TreeEntry) throws -> Data {
-    let blobPointer = try GitError.checkAndReturn(apiName: "git_blob_lookup", closure: { pointer in
-      var oid = entry.objectID.oid
-      return git_blob_lookup(&pointer, repositoryPointer, &oid)
-    })
-    defer {
-      git_blob_free(blobPointer)
-    }
-    let size = git_blob_rawsize(blobPointer)
-    let data = Data(bytes: git_blob_rawcontent(blobPointer), count: Int(size))
-    return data
-  }
-
-  // TODO: Refactor shared code with the TreeEntry version
-  public func lookupBlob(for entry: git_index_entry) throws -> Data {
-    let blobPointer = try GitError.checkAndReturn(apiName: "git_blob_lookup", closure: { pointer in
-      var oid = entry.id
-      return git_blob_lookup(&pointer, repositoryPointer, &oid)
-    })
-    defer {
-      git_blob_free(blobPointer)
-    }
-    let size = git_blob_rawsize(blobPointer)
-    let data = Data(bytes: git_blob_rawcontent(blobPointer), count: Int(size))
-    return data
-  }
-
   public func lookupCommit(for id: ObjectID) throws -> Commit {
     var objectID = id.oid
     let commitPointer = try GitError.checkAndReturn(apiName: "git_commit_lookup", closure: { pointer in
@@ -1139,29 +1156,6 @@ public final class Repository {
     try GitError.check(apiName: "git_index_write", closure: {
       git_index_write(indexPointer)
     })
-  }
-
-  public func addData(_ data: Data, path: String) throws {
-    try path.withCString { pathPointer in
-      var indexEntry = git_index_entry()
-      indexEntry.path = pathPointer
-      let now = Date()
-      let indexTime = git_index_time(seconds: Int32(now.timeIntervalSince1970), nanoseconds: 0)
-      indexEntry.ctime = indexTime
-      indexEntry.mtime = indexTime
-      indexEntry.mode = 0o100644
-      let indexPointer = try GitError.checkAndReturn(apiName: "git_repository_index", closure: { pointer in
-        git_repository_index(&pointer, repositoryPointer)
-      })
-      defer {
-        git_index_free(indexPointer)
-      }
-      try data.withUnsafeBytes { bufferPointer in
-        try GitError.check(apiName: "git_index_add_from_buffer", closure: {
-          git_index_add_from_buffer(indexPointer, &indexEntry, bufferPointer.baseAddress, data.count)
-        })
-      }
-    }
   }
 
   @discardableResult

@@ -166,7 +166,7 @@ final class RepositoryTests: XCTestCase {
     guard let gitIgnoreEntry = try await entries.first(where: { $0.name == ".gitignore" }) else {
       throw CocoaError(.fileNoSuchFile)
     }
-    let data = try repository.lookupBlob(for: gitIgnoreEntry)
+    let data = try repository.data(for: gitIgnoreEntry.objectID)
     let string = String(data: data, encoding: .utf8)!
     print(string)
   }
