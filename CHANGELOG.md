@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.0]
+
+* Bumped `static-libgit2` dependency to 0.5.0 to get MacCatalyst to work.
+
 ## [0.2.0]
 
 ### Added
