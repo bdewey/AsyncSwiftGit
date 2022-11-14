@@ -1324,7 +1324,7 @@ public final class Repository {
   }
 
   public func isCommit(_ commit: Commit, reachableFrom objectIDs: [ObjectID]) throws -> Bool {
-    let oids = objectIDs.map { $0.oid }
+    let oids = objectIDs.map(\.oid)
     return try isCommit(commit, reachableFrom: oids)
   }
 

@@ -2,6 +2,11 @@
 
 import Foundation
 
+public extension CodingUserInfoKey {
+  /// Include this key in `JSONEncoder.userInfo` (and set it to any non-nil value) to include the password in the serialized settings.
+  static let includeConnectionPasswordKey = CodingUserInfoKey(rawValue: "org.brians-brain.AsyncSwiftGit.includeConnectionPassword")!
+}
+
 /// Type for all of the settings required to connect to a remote ``Repository``.
 ///
 /// This type is designed for use in UI components that let people fill out sync settings -- it is possible to have invalid settings (e.g., missing required values or invalid connection strings).
@@ -66,6 +71,7 @@ public struct GitConnectionSettings: Codable, Equatable {
     case isReadOnly
     case connectionType
     case sshKey
+    case password
   }
 
   public init(from decoder: Decoder) throws {
@@ -76,6 +82,7 @@ public struct GitConnectionSettings: Codable, Equatable {
     self.isReadOnly = try container.decodeIfPresent(Bool.self, forKey: .isReadOnly) ?? false
     self.connectionType = try container.decode(AuthenticationType.self, forKey: .connectionType)
     self.sshKeyPair = try container.decode(SSHKeyPair.self, forKey: .sshKey)
+    self.password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -86,6 +93,9 @@ public struct GitConnectionSettings: Codable, Equatable {
     try container.encode(isReadOnly, forKey: .isReadOnly)
     try container.encode(connectionType, forKey: .connectionType)
     try container.encode(sshKeyPair, forKey: .sshKey)
+    if encoder.userInfo[.includeConnectionPasswordKey] != nil {
+      try container.encode(password, forKey: .password)
+    }
   }
 
   public var keychainIdentifier: String {
