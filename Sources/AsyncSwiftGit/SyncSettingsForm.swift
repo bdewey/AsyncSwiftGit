@@ -3,13 +3,19 @@
 import SwiftUI
 
 @available(iOS 15.0, macCatalyst 15.0, macOS 12.0, *)
-public struct SyncSettingsForm: View {
+public struct SyncSettingsForm<ExtraContent: View>: View {
   @Binding public var settings: GitConnectionSettings
   public var shouldShowValidIndicator = false
+  public var extraContent: () -> ExtraContent
 
-  public init(settings: Binding<GitConnectionSettings>, shouldShowValidIndicator: Bool = false) {
+  public init(
+    settings: Binding<GitConnectionSettings>,
+    shouldShowValidIndicator: Bool = false,
+    @ViewBuilder extraContent: @escaping () -> ExtraContent = { EmptyView() }
+  ) {
     self._settings = settings
     self.shouldShowValidIndicator = shouldShowValidIndicator
+    self.extraContent = extraContent
   }
 
   public var body: some View {
@@ -68,6 +74,7 @@ public struct SyncSettingsForm: View {
           .foregroundColor(settings.isValid ? .secondary : .red)
           .font(.caption)
       }
+      extraContent()
     }
   }
 }
