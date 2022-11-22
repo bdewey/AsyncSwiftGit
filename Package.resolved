@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/bdewey/static-libgit2",
       "state" : {
-        "revision" : "1f437b1d8a08b6bd914264576034bb55198f6f67",
-        "version" : "0.3.0"
+        "revision" : "ca2b13cb2cd04365c9416803c1d7e26116b23efd",
+        "version" : "0.5.0"
       }
     },
     {

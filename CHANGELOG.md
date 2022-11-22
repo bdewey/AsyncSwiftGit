@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.0]
+
+* Add code to serialize Git connection settings
+* Allow custom content in `SyncSettingsForm`
+
 ## [0.3.0]
 
 * Bumped `static-libgit2` dependency to 0.5.0 to get MacCatalyst to work.
